@@ -5,109 +5,64 @@ import com.roguelab.domain.component.Health;
 import com.roguelab.domain.component.StatusEffects;
 
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Represents an enemy entity in the game.
- * Uses composition - combines Health, Combat, and StatusEffects components.
+ * Represents an enemy in the game.
  */
 public final class Enemy {
     
+    private static final AtomicLong ID_COUNTER = new AtomicLong(0);
+    
     private final EntityId id;
     private final EnemyType type;
-    private final int floor;
     private final Health health;
     private final Combat combat;
     private final StatusEffects statuses;
-    private Position position;
+    private final int floor;
     
     public Enemy(EnemyType type, int floor) {
-        this.id = EntityId.withPrefix(type.name().toLowerCase());
+        this.id = EntityId.of(type.name().toLowerCase() + "_" + ID_COUNTER.incrementAndGet());
         this.type = Objects.requireNonNull(type);
         this.floor = floor;
-        this.health = new Health(type.getScaledHealth(floor));
-        this.combat = new Combat(type.getScaledAttack(floor), type.getScaledDefense(floor));
+        
+        int scaledHealth = type.getBaseHealth() + (floor - 1) * type.getHealthPerFloor();
+        int scaledAttack = type.getBaseAttack() + (floor - 1) * type.getAttackPerFloor();
+        int scaledDefense = type.getBaseDefense() + (floor - 1) * type.getDefensePerFloor();
+        
+        this.health = new Health(scaledHealth);
+        this.combat = new Combat(scaledAttack, scaledDefense);
         this.statuses = new StatusEffects();
-        this.position = Position.ORIGIN;
     }
     
-    /**
-     * Create enemy with a specific ID (for testing or loading).
-     */
-    public Enemy(EntityId id, EnemyType type, int floor) {
+    public Enemy(EntityId id, EnemyType type, int floor, int health, int attack, int defense) {
         this.id = Objects.requireNonNull(id);
         this.type = Objects.requireNonNull(type);
         this.floor = floor;
-        this.health = new Health(type.getScaledHealth(floor));
-        this.combat = new Combat(type.getScaledAttack(floor), type.getScaledDefense(floor));
+        
+        this.health = new Health(health);
+        this.combat = new Combat(attack, defense);
         this.statuses = new StatusEffects();
-        this.position = Position.ORIGIN;
     }
     
-    public EntityId getId() {
-        return id;
-    }
+    public EntityId getId() { return id; }
+    public EnemyType getType() { return type; }
+    public String getName() { return type.getDisplayName(); }
+    public Health getHealth() { return health; }
+    public Combat getCombat() { return combat; }
+    public StatusEffects getStatuses() { return statuses; }
+    public int getFloor() { return floor; }
     
-    public EnemyType getType() {
-        return type;
-    }
+    public boolean isAlive() { return health.isAlive(); }
+    public boolean isDead() { return health.isDead(); }
+    public boolean isBoss() { return type.isBoss(); }
     
-    public String getName() {
-        return type.getDisplayName();
-    }
-    
-    public int getFloor() {
-        return floor;
-    }
-    
-    public Health getHealth() {
-        return health;
-    }
-    
-    public Combat getCombat() {
-        return combat;
-    }
-    
-    public StatusEffects getStatuses() {
-        return statuses;
-    }
-    
-    public Position getPosition() {
-        return position;
-    }
-    
-    public void setPosition(Position position) {
-        this.position = Objects.requireNonNull(position);
-    }
-    
-    public boolean isDead() {
-        return health.isDead();
-    }
-    
-    public boolean isAlive() {
-        return health.isAlive();
-    }
-    
-    public boolean isBoss() {
-        return type.isBoss();
-    }
-    
-    /**
-     * Calculate attack value considering status effects.
-     */
     public int getEffectiveAttack() {
         int attack = combat.getTotalAttack();
-        if (statuses.has(StatusType.WEAKENED)) {
-            attack = (int) (attack * 0.7);
-        }
-        if (statuses.has(StatusType.STRENGTHENED)) {
-            attack = (int) (attack * 1.3);
-        }
-        return attack;
+        double modifier = statuses.getAttackModifier();
+        return (int) Math.round(attack * modifier);
     }
     
-    /**
-     * Calculate defense value considering status effects.
-     */
     public int getEffectiveDefense() {
         int defense = combat.getTotalDefense();
         if (statuses.has(StatusType.SHIELDED)) {
@@ -116,20 +71,16 @@ public final class Enemy {
         return defense;
     }
     
-    /**
-     * Calculate gold dropped on death.
-     */
-    public int calculateGoldDrop() {
-        int baseGold = type.isBoss() ? 100 + floor * 50 : 5 + floor * 3;
-        return baseGold;
+    public DamageType getDamageType() {
+        return type.getDamageType();
     }
     
-    /**
-     * Calculate experience given on death.
-     */
+    public int calculateGoldDrop() {
+        return type.isBoss() ? 100 + floor * 50 : 5 + floor * 3;
+    }
+    
     public int calculateExperience() {
-        int baseXP = type.isBoss() ? 50 + floor * 20 : 10 + floor * 2;
-        return baseXP;
+        return type.isBoss() ? 50 + floor * 20 : 10 + floor * 2;
     }
     
     @Override
@@ -146,6 +97,7 @@ public final class Enemy {
     
     @Override
     public String toString() {
-        return String.format("%s [%s] HP:%s", getName(), id, health);
+        return String.format("%s [%s] HP:%d/%d", 
+            getName(), id.value(), health.getCurrent(), health.getMaximum());
     }
 }

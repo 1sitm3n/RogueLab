@@ -6,7 +6,6 @@ import java.util.Objects;
 
 /**
  * Represents the player character.
- * Uses composition - combines Health, Combat, StatusEffects, and Inventory components.
  */
 public final class Player {
     
@@ -39,173 +38,106 @@ public final class Player {
         this.level = 1;
         this.enemiesKilled = 0;
         
-        // Rogues get higher crit chance
         if (playerClass == PlayerClass.ROGUE) {
             combat.setCriticalChance(0.15);
             combat.setCriticalMultiplier(2.0);
         }
         
-        // Mages deal magic damage
         if (playerClass == PlayerClass.MAGE) {
             combat.setPrimaryDamageType(DamageType.MAGIC);
         }
     }
     
-    public EntityId getId() {
-        return id;
-    }
+    // Getters
+    public EntityId getId() { return id; }
+    public String getName() { return name; }
+    public PlayerClass getPlayerClass() { return playerClass; }
+    public Health getHealth() { return health; }
+    public Combat getCombat() { return combat; }
+    public StatusEffects getStatuses() { return statuses; }
+    public Inventory getInventory() { return inventory; }
+    public Position getPosition() { return position; }
+    public int getCurrentFloor() { return currentFloor; }
+    public int getExperience() { return experience; }
+    public int getLevel() { return level; }
+    public int getEnemiesKilled() { return enemiesKilled; }
     
-    public String getName() {
-        return name;
-    }
+    public void setPosition(Position position) { this.position = Objects.requireNonNull(position); }
+    public void setCurrentFloor(int floor) { this.currentFloor = floor; }
+    public void incrementEnemiesKilled() { this.enemiesKilled++; }
     
-    public PlayerClass getPlayerClass() {
-        return playerClass;
-    }
+    public boolean isDead() { return health.isDead(); }
+    public boolean isAlive() { return health.isAlive(); }
     
-    public Health getHealth() {
-        return health;
-    }
-    
-    public Combat getCombat() {
-        return combat;
-    }
-    
-    public StatusEffects getStatuses() {
-        return statuses;
-    }
-    
-    public Inventory getInventory() {
-        return inventory;
-    }
-    
-    public Position getPosition() {
-        return position;
-    }
-    
-    public void setPosition(Position position) {
-        this.position = Objects.requireNonNull(position);
-    }
-    
-    public int getCurrentFloor() {
-        return currentFloor;
-    }
-    
-    public void setCurrentFloor(int floor) {
-        this.currentFloor = floor;
-    }
-    
-    public int getExperience() {
-        return experience;
-    }
-    
-    public int getLevel() {
-        return level;
-    }
-    
-    public int getEnemiesKilled() {
-        return enemiesKilled;
-    }
-    
-    public void incrementEnemiesKilled() {
-        this.enemiesKilled++;
-    }
-    
-    public boolean isDead() {
-        return health.isDead();
-    }
-    
-    public boolean isAlive() {
-        return health.isAlive();
-    }
-    
-    /**
-     * Calculate effective attack including equipment and status effects.
-     */
     public int getEffectiveAttack() {
-        int attack = combat.getTotalAttack() + inventory.getEquippedAttackBonus();
-        if (statuses.has(StatusType.WEAKENED)) {
-            attack = (int) (attack * 0.7);
-        }
-        if (statuses.has(StatusType.STRENGTHENED)) {
-            attack = (int) (attack * 1.3);
-        }
-        return Math.max(1, attack);
+        int attack = combat.getTotalAttack();
+        attack += inventory.getEquipmentAttackBonus();
+        double modifier = statuses.getAttackModifier();
+        return (int) Math.round(attack * modifier);
     }
     
-    /**
-     * Calculate effective defense including equipment and status effects.
-     */
     public int getEffectiveDefense() {
-        int defense = combat.getTotalDefense() + inventory.getEquippedDefenseBonus();
+        int defense = combat.getTotalDefense();
+        defense += inventory.getEquipmentDefenseBonus();
         if (statuses.has(StatusType.SHIELDED)) {
             defense = (int) (defense * 1.5);
         }
-        return Math.max(0, defense);
+        return defense;
     }
     
-    /**
-     * Calculate maximum health including equipment bonuses.
-     */
-    public int getEffectiveMaxHealth() {
-        return health.getMaximum() + inventory.getEquippedHealthBonus();
-    }
-    
-    /**
-     * Add experience and check for level up.
-     * @return true if player leveled up
-     */
     public boolean addExperience(int amount) {
-        if (amount <= 0) return false;
-        
+        if (amount < 0) throw new IllegalArgumentException("Experience cannot be negative");
+        int oldLevel = level;
         experience += amount;
-        int requiredXP = getRequiredExperienceForNextLevel();
-        
-        if (experience >= requiredXP) {
+        while (experience >= getExperienceForNextLevel()) {
+            experience -= getExperienceForNextLevel();
             levelUp();
-            return true;
         }
-        return false;
+        return level > oldLevel;
     }
     
-    /**
-     * Get XP required for next level.
-     */
+    public int getExperienceForNextLevel() {
+        return (int) (100 * Math.pow(level, 1.5));
+    }
+    
     public int getRequiredExperienceForNextLevel() {
-        return level * 100;
+        return getExperienceForNextLevel();
     }
     
-    private void levelUp() {
-        level++;
-        experience = 0;
-        
-        // Stat increases on level up
-        health.increaseMaximum(10);
-        combat.addBonusAttack(2);
-        combat.addBonusDefense(1);
-        
-        // Full heal on level up
-        health.heal(health.getMaximum());
-    }
-    
-    /**
-     * Advance to next floor.
-     */
     public void descendToNextFloor() {
         currentFloor++;
     }
     
-    /**
-     * Get gold from inventory (convenience method).
-     */
-    public int getGold() {
-        return inventory.getGold();
+    private void levelUp() {
+        level++;
+        int healthIncrease = switch (playerClass) {
+            case WARRIOR -> 15;
+            case ROGUE -> 10;
+            case MAGE -> 8;
+        };
+        int attackIncrease = switch (playerClass) {
+            case WARRIOR -> 2;
+            case ROGUE -> 3;
+            case MAGE -> 1;
+        };
+        int defenseIncrease = switch (playerClass) {
+            case WARRIOR -> 2;
+            case ROGUE -> 1;
+            case MAGE -> 1;
+        };
+        
+        health.increaseMaximum(healthIncrease);
+        health.heal(health.getMaximum()); // Heal to full on level up
+        combat.addBonusAttack(attackIncrease);
+        combat.addBonusDefense(defenseIncrease);
     }
     
     @Override
     public String toString() {
-        return String.format("%s the %s [Lv.%d] HP:%s ATK:%d DEF:%d Gold:%d",
+        return String.format("%s the %s [Lv.%d] HP:%d/%d ATK:%d DEF:%d Gold:%d",
             name, playerClass.getDisplayName(), level,
-            health, getEffectiveAttack(), getEffectiveDefense(), getGold());
+            health.getCurrent(), health.getMaximum(),
+            getEffectiveAttack(), getEffectiveDefense(),
+            inventory.getGold());
     }
 }

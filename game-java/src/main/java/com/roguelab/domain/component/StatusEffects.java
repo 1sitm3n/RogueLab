@@ -6,7 +6,7 @@ import com.roguelab.domain.StatusType;
 import java.util.*;
 
 /**
- * Manages the collection of status effects on an entity.
+ * Component that manages status effects on an entity.
  */
 public final class StatusEffects {
     
@@ -16,103 +16,95 @@ public final class StatusEffects {
         this.effects = new EnumMap<>(StatusType.class);
     }
     
-    /**
-     * Apply a status effect. If already present, refreshes duration and adds stacks.
-     * @return The resulting status effect
-     */
-    public StatusEffect apply(StatusType type, EntityId sourceId, int duration, int stacks) {
-        StatusEffect existing = effects.get(type);
-        if (existing != null) {
+    public boolean has(StatusType type) {
+        return effects.containsKey(type) && !effects.get(type).isExpired();
+    }
+    
+    public boolean hasStatus(StatusType type) {
+        return has(type);
+    }
+    
+    public StatusEffect getStatus(StatusType type) {
+        return effects.get(type);
+    }
+    
+    public void apply(StatusType type, EntityId sourceId, int duration, int stacks) {
+        if (effects.containsKey(type)) {
+            StatusEffect existing = effects.get(type);
             existing.refreshDuration(duration);
-            existing.addStacks(stacks);
-            return existing;
+            if (type.isStackable()) {
+                int maxStacks = type.getMaxStacks();
+                int newStacks = Math.min(existing.getStacks() + stacks, maxStacks);
+                existing.addStacks(newStacks - existing.getStacks());
+            }
         } else {
-            StatusEffect newEffect = new StatusEffect(type, sourceId, duration, stacks);
-            effects.put(type, newEffect);
-            return newEffect;
+            effects.put(type, new StatusEffect(type, sourceId, duration, stacks));
         }
     }
     
-    /**
-     * Apply a status effect with 1 stack.
-     */
-    public StatusEffect apply(StatusType type, EntityId sourceId, int duration) {
-        return apply(type, sourceId, duration, 1);
+    public void apply(StatusType type, EntityId sourceId, int duration) {
+        apply(type, sourceId, duration, 1);
     }
     
-    /**
-     * Check if entity has a specific status.
-     */
-    public boolean has(StatusType type) {
-        return effects.containsKey(type);
+    public boolean remove(StatusType type) {
+        return effects.remove(type) != null;
     }
     
-    /**
-     * Get a specific status effect if present.
-     */
-    public Optional<StatusEffect> get(StatusType type) {
-        return Optional.ofNullable(effects.get(type));
-    }
-    
-    /**
-     * Get all active status effects.
-     */
-    public Collection<StatusEffect> getAll() {
-        return Collections.unmodifiableCollection(effects.values());
-    }
-    
-    /**
-     * Remove a specific status effect.
-     */
-    public void remove(StatusType type) {
-        effects.remove(type);
-    }
-    
-    /**
-     * Clear all status effects.
-     */
     public void clear() {
         effects.clear();
     }
     
-    /**
-     * Process a turn: tick all effects and remove expired ones.
-     * @return List of effects that expired this turn
-     */
-    public List<StatusEffect> tick() {
-        List<StatusEffect> expired = new ArrayList<>();
-        Iterator<Map.Entry<StatusType, StatusEffect>> it = effects.entrySet().iterator();
-        while (it.hasNext()) {
-            StatusEffect effect = it.next().getValue();
-            if (effect.tick()) {
-                expired.add(effect);
-                it.remove();
-            }
-        }
-        return expired;
+    public Collection<StatusEffect> getAll() {
+        return Collections.unmodifiableCollection(effects.values());
     }
     
-    /**
-     * Calculate total damage-over-time from all damaging effects.
-     */
-    public int calculateTotalTickDamage() {
-        return effects.values().stream()
-            .mapToInt(StatusEffect::calculateTickDamage)
-            .sum();
-    }
-    
-    /**
-     * Check if entity has any debilitating status (frozen, etc.)
-     */
-    public boolean isIncapacitated() {
-        return has(StatusType.FROZEN);
+    public int count() {
+        return effects.size();
     }
     
     public boolean isEmpty() {
         return effects.isEmpty();
     }
     
-    public int count() {
-        return effects.size();
+    public List<StatusType> tickAll() {
+        List<StatusType> expired = new ArrayList<>();
+        Iterator<Map.Entry<StatusType, StatusEffect>> it = effects.entrySet().iterator();
+        while (it.hasNext()) {
+            Map.Entry<StatusType, StatusEffect> entry = it.next();
+            if (entry.getValue().tick()) {
+                expired.add(entry.getKey());
+                it.remove();
+            }
+        }
+        return expired;
+    }
+    
+    public double getAttackModifier() {
+        double modifier = 1.0;
+        if (has(StatusType.STRENGTHENED)) modifier *= 1.50;
+        if (has(StatusType.WEAKENED)) modifier *= 0.75;
+        return modifier;
+    }
+    
+    public double getDefenseModifier() {
+        double modifier = 1.0;
+        if (has(StatusType.VULNERABLE)) modifier *= 1.50;
+        if (has(StatusType.ARMORED)) modifier *= 0.75;
+        if (has(StatusType.SHIELDED)) modifier *= 0.50;
+        return modifier;
+    }
+    
+    @Override
+    public String toString() {
+        if (effects.isEmpty()) return "[]";
+        StringBuilder sb = new StringBuilder("[");
+        boolean first = true;
+        for (StatusEffect effect : effects.values()) {
+            if (!first) sb.append(", ");
+            sb.append(effect.getType().name()).append("(").append(effect.getRemainingDuration()).append("t)");
+            first = false;
+        }
+        sb.append("]");
+        return sb.toString();
     }
 }

@@ -1,12 +1,28 @@
 package com.roguelab.domain;
 
 /**
- * Categories of items in the game.
+ * Types of items that can exist in the game.
  */
 public enum ItemType {
-    WEAPON,
-    ARMOR,
-    ACCESSORY,
-    CONSUMABLE,
-    RELIC
+    
+    WEAPON(true),
+    ARMOR(true),
+    ACCESSORY(true),
+    HELMET(true),
+    BOOTS(true),
+    CONSUMABLE(false),
+    KEY(false),
+    QUEST(false),
+    RELIC(false),
+    CURRENCY(false);
+    
+    private final boolean equippable;
+    
+    ItemType(boolean equippable) {
+        this.equippable = equippable;
+    }
+    
+    public boolean isEquippable() {
+        return equippable;
+    }
 }
