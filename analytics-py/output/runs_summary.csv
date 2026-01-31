@@ -1,0 +1,5 @@
+run_id,seed,difficulty,player_class,outcome,is_victory,floors_reached,rooms_visited,rooms_cleared,enemies_killed,damage_dealt,damage_taken,damage_efficiency,gold_earned,gold_spent,items_collected,combats,avg_combat_turns,critical_hit_rate
+run_1769804366983,1769804366983,NORMAL,WARRIOR,VICTORY,True,2,6,5,6,70,5,14.0,57,0,5,5,2.0,0.0
+run_1769860079031,1769860079031,NORMAL,WARRIOR,VICTORY,True,2,7,6,8,101,7,14.428571428571429,76,0,4,6,2.0,0.08333333333333333
+run_1769860080528,1769860080528,NORMAL,WARRIOR,VICTORY,True,2,8,6,6,87,5,17.4,60,0,5,5,2.0,0.0
+run_1769860084591,1769860084591,NORMAL,WARRIOR,VICTORY,True,2,6,6,7,84,7,12.0,68,0,3,5,2.2,0.0

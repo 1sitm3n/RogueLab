@@ -4,6 +4,7 @@ import com.roguelab.combat.*;
 import com.roguelab.domain.*;
 import com.roguelab.dungeon.*;
 import com.roguelab.game.*;
+import com.roguelab.render.GameWindow;
 import com.roguelab.telemetry.*;
 
 import java.io.IOException;
@@ -11,23 +12,26 @@ import java.nio.file.*;
 
 /**
  * Main entry point for RogueLab.
- * Demonstrates the complete game loop with telemetry capture.
+ * 
+ * Usage:
+ *   java RogueLab        - Launch GUI mode
+ *   java RogueLab --cli  - Run CLI demo
+ *   java RogueLab --cli [seed] - Run CLI demo with specific seed
  */
 public final class RogueLab {
     
-    public static final String VERSION = "0.2.0";
+    public static final String VERSION = "0.3.0";
     
     public static void main(String[] args) {
-        printBanner();
-        
-        // Parse seed from args or use current time
-        long seed = args.length > 0 ? Long.parseLong(args[0]) : System.currentTimeMillis();
-        
-        try {
-            runGameWithTelemetry(seed);
-        } catch (IOException e) {
-            System.err.println("Error: " + e.getMessage());
-            e.printStackTrace();
+        if (args.length > 0 && args[0].equals("--cli")) {
+            // CLI mode
+            long seed = args.length > 1 ? Long.parseLong(args[1]) : System.currentTimeMillis();
+            runCliDemo(seed);
+        } else {
+            // GUI mode (default)
+            printBanner();
+            System.out.println("Launching GUI...");
+            GameWindow.launch();
         }
     }
     
@@ -39,7 +43,21 @@ public final class RogueLab {
     }
     
     /**
-     * Run a complete game with telemetry capture.
+     * Run CLI demo mode.
+     */
+    private static void runCliDemo(long seed) {
+        printBanner();
+        
+        try {
+            runGameWithTelemetry(seed);
+        } catch (IOException e) {
+            System.err.println("Error: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+    
+    /**
+     * Run a complete game with telemetry capture (CLI mode).
      */
     private static void runGameWithTelemetry(long seed) throws IOException {
         // Create telemetry output
