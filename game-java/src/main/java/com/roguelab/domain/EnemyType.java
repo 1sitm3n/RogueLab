@@ -2,32 +2,38 @@ package com.roguelab.domain;
 
 /**
  * Types of enemies that can appear in the game.
+ * 
+ * BALANCE v0.5.2:
+ * - v8 was 14% win (boss ATK 10)
+ * - v9 was 91% win (boss ATK 8)
+ * - v10: Split the difference - boss ATK 9
+ * - Target: ~50% win rate
  */
 public enum EnemyType {
     
     // Floor 1-2
-    RAT("Giant Rat", 12, 4, 1, 2, 1, 0, DamageType.PHYSICAL, false),
-    SLIME("Slime", 15, 3, 0, 3, 1, 0, DamageType.PHYSICAL, false),
-    BAT("Cave Bat", 8, 5, 0, 2, 1, 0, DamageType.PHYSICAL, false),
-    GOBLIN("Goblin", 18, 6, 2, 3, 1, 1, DamageType.PHYSICAL, false),
+    RAT("Giant Rat", 12, 5, 1, 2, 1, 0, DamageType.PHYSICAL, false),
+    SLIME("Slime", 16, 4, 0, 3, 1, 0, DamageType.PHYSICAL, false),
+    BAT("Cave Bat", 10, 6, 0, 2, 1, 0, DamageType.PHYSICAL, false),
+    GOBLIN("Goblin", 20, 7, 2, 3, 1, 1, DamageType.PHYSICAL, false),
     
-    // Floor 3-4
-    SKELETON("Skeleton", 25, 8, 3, 4, 2, 1, DamageType.PHYSICAL, false),
-    ZOMBIE("Zombie", 35, 6, 2, 5, 1, 1, DamageType.PHYSICAL, false),
-    SPIDER("Giant Spider", 20, 9, 2, 3, 2, 1, DamageType.POISON, false),
-    ORC("Orc Warrior", 40, 10, 4, 6, 2, 1, DamageType.PHYSICAL, false),
+    // Floor 2-3 (back to v8 levels for some attrition)
+    SKELETON("Skeleton", 24, 8, 2, 4, 2, 1, DamageType.PHYSICAL, false),
+    ZOMBIE("Zombie", 32, 6, 2, 5, 1, 1, DamageType.PHYSICAL, false),
+    SPIDER("Giant Spider", 18, 8, 1, 3, 2, 1, DamageType.POISON, false),
+    ORC("Orc Warrior", 38, 9, 4, 5, 2, 1, DamageType.PHYSICAL, false),
     
-    // Floor 5-6
-    TROLL("Cave Troll", 60, 12, 6, 8, 3, 2, DamageType.PHYSICAL, false),
-    WRAITH("Wraith", 30, 15, 2, 5, 3, 1, DamageType.MAGIC, false),
-    ELEMENTAL("Fire Elemental", 45, 14, 4, 6, 3, 1, DamageType.FIRE, false),
-    GOLEM("Stone Golem", 80, 10, 10, 10, 2, 3, DamageType.PHYSICAL, false),
+    // Floor 3+ 
+    TROLL("Cave Troll", 55, 11, 5, 7, 2, 1, DamageType.PHYSICAL, false),
+    WRAITH("Wraith", 26, 11, 2, 4, 2, 1, DamageType.MAGIC, false),
+    ELEMENTAL("Fire Elemental", 42, 12, 4, 5, 2, 1, DamageType.FIRE, false),
+    GOLEM("Stone Golem", 70, 9, 8, 8, 2, 2, DamageType.PHYSICAL, false),
     
-    // Bosses
-    GOBLIN_KING("Goblin King", 80, 15, 8, 10, 3, 2, DamageType.PHYSICAL, true),
-    NECROMANCER("Necromancer", 100, 20, 5, 15, 4, 2, DamageType.MAGIC, true),
-    DRAGON("Ancient Dragon", 200, 30, 15, 25, 5, 3, DamageType.FIRE, true);
-    
+    // Bosses (between v8 and v9)
+    GOBLIN_KING("Goblin King", 60, 9, 3, 5, 1, 1, DamageType.PHYSICAL, true),
+    NECROMANCER("Necromancer", 75, 13, 3, 7, 2, 1, DamageType.MAGIC, true),
+    DRAGON("Ancient Dragon", 140, 17, 7, 12, 2, 1, DamageType.FIRE, true);
+
     private final String displayName;
     private final int baseHealth;
     private final int baseAttack;
@@ -37,7 +43,7 @@ public enum EnemyType {
     private final int defensePerFloor;
     private final DamageType damageType;
     private final boolean boss;
-    
+
     EnemyType(String displayName, int baseHealth, int baseAttack, int baseDefense,
               int healthPerFloor, int attackPerFloor, int defensePerFloor,
               DamageType damageType, boolean boss) {
@@ -51,7 +57,7 @@ public enum EnemyType {
         this.damageType = damageType;
         this.boss = boss;
     }
-    
+
     public String getDisplayName() { return displayName; }
     public int getBaseHealth() { return baseHealth; }
     public int getBaseAttack() { return baseAttack; }
@@ -61,15 +67,15 @@ public enum EnemyType {
     public int getDefensePerFloor() { return defensePerFloor; }
     public DamageType getDamageType() { return damageType; }
     public boolean isBoss() { return boss; }
-    
+
     public int getHealthForFloor(int floor) {
         return baseHealth + (floor - 1) * healthPerFloor;
     }
-    
+
     public int getAttackForFloor(int floor) {
         return baseAttack + (floor - 1) * attackPerFloor;
     }
-    
+
     public int getDefenseForFloor(int floor) {
         return baseDefense + (floor - 1) * defensePerFloor;
     }

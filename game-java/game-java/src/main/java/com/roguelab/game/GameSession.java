@@ -46,6 +46,7 @@ public final class GameSession {
         this.runId = "run_" + System.currentTimeMillis();
         this.seed = seed;
         this.difficulty = difficulty;
+        BalanceConfig.applyDifficulty(difficulty);
         this.dungeonConfig = dungeonConfig;
         this.random = new GameRandom(seed);
         
@@ -314,7 +315,7 @@ public final class GameSession {
         validateState(GameState.AT_REST);
         
         // Heal 30% of max health
-        int maxHeal = (int) (player.getHealth().getMaximum() * 0.30);
+        int healAmount = (int)(player.getHealth().getMaximum() * BalanceConfig.REST_HEAL_PERCENT);
         int healed = player.getHealth().heal(maxHeal);
         
         statistics.recordHealing(healed);
