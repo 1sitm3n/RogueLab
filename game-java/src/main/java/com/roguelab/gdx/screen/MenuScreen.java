@@ -8,13 +8,15 @@ import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.GlyphLayout;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
+import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
+import com.badlogic.gdx.math.MathUtils;
 import com.roguelab.domain.PlayerClass;
+import com.roguelab.gdx.Assets;
 import com.roguelab.gdx.RogueLabGame;
 
 /**
- * Main menu screen with class selection.
- * Uses the real PlayerClass enum from the domain model.
+ * Daggerfall-style main menu with gothic stone aesthetic.
  */
 public class MenuScreen implements Screen {
 
@@ -24,14 +26,19 @@ public class MenuScreen implements Screen {
 
     private int selectedIndex = 0;
     private final PlayerClass[] classes = PlayerClass.values();
-    private final Color[] classColors = {
-        new Color(0.2f, 0.4f, 0.8f, 1f),  // WARRIOR - blue
-        new Color(0.3f, 0.6f, 0.3f, 1f),  // ROGUE - green
-        new Color(0.6f, 0.2f, 0.6f, 1f)   // MAGE - purple
-    };
-
-    private float titlePulse = 0;
+    
+    private float animTimer = 0;
     private final GlyphLayout layout;
+
+    // Daggerfall colors
+    private static final Color STONE_DARK = Assets.STONE_DARK;
+    private static final Color STONE_MID = Assets.STONE_MID;
+    private static final Color STONE_LIGHT = Assets.STONE_LIGHT;
+    private static final Color PARCHMENT = Assets.PARCHMENT_MID;
+    private static final Color PARCHMENT_LIGHT = Assets.PARCHMENT_LIGHT;
+    private static final Color GOLD = Assets.GOLD_MID;
+    private static final Color GOLD_LIGHT = Assets.GOLD_LIGHT;
+    private static final Color BLOOD = Assets.BLOOD_RED;
 
     public MenuScreen(RogueLabGame game) {
         this.game = game;
@@ -41,114 +48,239 @@ public class MenuScreen implements Screen {
     }
 
     @Override
-    public void show() {
-        Gdx.app.log("MenuScreen", "Showing menu");
-    }
+    public void show() {}
 
     @Override
     public void render(float delta) {
-        // Update
         handleInput();
-        titlePulse += delta * 2;
+        animTimer += delta;
 
-        // Clear screen
-        Gdx.gl.glClearColor(0.1f, 0.1f, 0.15f, 1f);
+        // Dark dungeon background
+        Gdx.gl.glClearColor(0.05f, 0.04f, 0.03f, 1f);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
 
-        float centerX = Gdx.graphics.getWidth() / 2f;
-        float centerY = Gdx.graphics.getHeight() / 2f;
+        float screenWidth = Gdx.graphics.getWidth();
+        float screenHeight = Gdx.graphics.getHeight();
+        float centerX = screenWidth / 2f;
+        float centerY = screenHeight / 2f;
 
-        // Draw background decorations
-        drawBackground();
+        // Stone background texture pattern
+        drawStoneBackground(screenWidth, screenHeight);
+        
+        // Main panel
+        float panelW = 600;
+        float panelH = 500;
+        float panelX = centerX - panelW / 2f;
+        float panelY = centerY - panelH / 2f;
+        
+        drawOrnatePanel(panelX, panelY, panelW, panelH);
 
-        // Draw UI
         batch.begin();
 
         BitmapFont titleFont = game.getAssets().getTitleFont();
-        BitmapFont normalFont = game.getAssets().getNormalFont();
+        BitmapFont font = game.getAssets().getNormalFont();
         BitmapFont smallFont = game.getAssets().getSmallFont();
 
-        // Title with pulse effect
-        float titleScale = 1f + (float) Math.sin(titlePulse) * 0.05f;
-        titleFont.getData().setScale(3f * titleScale);
-        titleFont.setColor(new Color(0.9f, 0.8f, 0.3f, 1f));
+        // Title with flicker effect
+        float flicker = 0.85f + MathUtils.sin(animTimer * 2) * 0.15f;
+        titleFont.setColor(GOLD_LIGHT.r * flicker, GOLD_LIGHT.g * flicker, GOLD_LIGHT.b * 0.5f, 1f);
+        titleFont.getData().setScale(3.5f);
         layout.setText(titleFont, "ROGUELAB");
-        titleFont.draw(batch, "ROGUELAB", centerX - layout.width / 2, centerY + 200);
+        titleFont.draw(batch, "ROGUELAB", centerX - layout.width / 2f, panelY + panelH - 40);
         titleFont.getData().setScale(3f);
 
         // Subtitle
-        normalFont.setColor(Color.LIGHT_GRAY);
-        layout.setText(normalFont, "A Data-Driven Roguelike");
-        normalFont.draw(batch, "A Data-Driven Roguelike", centerX - layout.width / 2, centerY + 140);
+        font.setColor(STONE_LIGHT);
+        layout.setText(font, "A Dungeon of Data");
+        font.draw(batch, "A Dungeon of Data", centerX - layout.width / 2f, panelY + panelH - 100);
 
-        // Class selection header
-        normalFont.setColor(Color.WHITE);
-        layout.setText(normalFont, "SELECT YOUR CLASS");
-        normalFont.draw(batch, "SELECT YOUR CLASS", centerX - layout.width / 2, centerY + 60);
+        // Divider line
+        batch.end();
+        drawGoldDivider(panelX + 50, panelY + panelH - 130, panelW - 100);
+        batch.begin();
 
-        // Class options
+        // "Choose Your Class" header
+        font.setColor(PARCHMENT_LIGHT);
+        layout.setText(font, "CHOOSE YOUR CLASS");
+        font.draw(batch, "CHOOSE YOUR CLASS", centerX - layout.width / 2f, panelY + panelH - 160);
+
+        // Class selection
+        float classY = panelY + panelH - 220;
         for (int i = 0; i < classes.length; i++) {
-            float y = centerY - 20 - i * 70;
-            boolean selected = (i == selectedIndex);
             PlayerClass pc = classes[i];
-
-            // Selection indicator
+            boolean selected = (i == selectedIndex);
+            
+            // Selection highlight
             if (selected) {
-                normalFont.setColor(classColors[i]);
-                normalFont.draw(batch, "> ", centerX - 150, y);
-                normalFont.draw(batch, " <", centerX + 120, y);
+                batch.end();
+                float pulse = 0.4f + MathUtils.sin(animTimer * 4) * 0.2f;
+                shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+                shapeRenderer.setColor(GOLD.r, GOLD.g, GOLD.b, pulse);
+                shapeRenderer.rect(panelX + 40, classY - 35, panelW - 80, 70);
+                shapeRenderer.end();
+                
+                // Border
+                shapeRenderer.begin(ShapeRenderer.ShapeType.Line);
+                shapeRenderer.setColor(GOLD_LIGHT);
+                shapeRenderer.rect(panelX + 40, classY - 35, panelW - 80, 70);
+                shapeRenderer.end();
+                batch.begin();
             }
 
+            // Portrait
+            TextureRegion portrait = game.getAssets().getPortrait(pc.name());
+            float portraitX = panelX + 60;
+            batch.draw(portrait, portraitX, classY - 30, 56, 56);
+
             // Class name
-            normalFont.setColor(selected ? classColors[i] : Color.GRAY);
-            layout.setText(normalFont, pc.getDisplayName());
-            normalFont.draw(batch, pc.getDisplayName(), centerX - layout.width / 2, y);
+            font.setColor(selected ? GOLD_LIGHT : PARCHMENT);
+            font.draw(batch, pc.getDisplayName(), portraitX + 70, classY + 15);
+
+            // Stats
+            smallFont.setColor(selected ? PARCHMENT_LIGHT : STONE_LIGHT);
+            String stats = String.format("HP: %d   ATK: %d   DEF: %d",
+                pc.getStartingHealth(), pc.getStartingAttack(), pc.getStartingDefense());
+            smallFont.draw(batch, stats, portraitX + 70, classY - 10);
 
             // Description (only for selected)
             if (selected) {
-                smallFont.setColor(Color.LIGHT_GRAY);
-                layout.setText(smallFont, pc.getDescription());
-                smallFont.draw(batch, pc.getDescription(), centerX - layout.width / 2, y - 25);
-
-                // Stats
-                smallFont.setColor(new Color(0.6f, 0.6f, 0.6f, 1f));
-                String stats = String.format("HP: %d  ATK: %d  DEF: %d",
-                    pc.getStartingHealth(), pc.getStartingAttack(), pc.getStartingDefense());
-                layout.setText(smallFont, stats);
-                smallFont.draw(batch, stats, centerX - layout.width / 2, y - 45);
+                smallFont.setColor(STONE_LIGHT);
+                smallFont.draw(batch, pc.getDescription(), portraitX + 70, classY - 28);
             }
+
+            classY -= 90;
         }
 
+        // Divider
+        batch.end();
+        drawGoldDivider(panelX + 50, panelY + 80, panelW - 100);
+        batch.begin();
+
         // Instructions
-        smallFont.setColor(Color.GRAY);
-        String instructions = "UP/DOWN or W/S to select  |  ENTER or SPACE to start  |  ESC to quit";
-        layout.setText(smallFont, instructions);
-        smallFont.draw(batch, instructions, centerX - layout.width / 2, 60);
+        float instructY = panelY + 55;
+        smallFont.setColor(STONE_LIGHT);
+        
+        // Arrow keys hint
+        String nav = "[ W/S or UP/DOWN ] Select Class";
+        layout.setText(smallFont, nav);
+        smallFont.draw(batch, nav, centerX - layout.width / 2f, instructY);
+        
+        // Enter hint with pulse
+        float enterPulse = 0.6f + MathUtils.sin(animTimer * 3) * 0.4f;
+        smallFont.setColor(GOLD.r * enterPulse + 0.3f, GOLD.g * enterPulse + 0.2f, GOLD.b * 0.3f, 1f);
+        String enter = "[ ENTER or SPACE ] Begin Quest";
+        layout.setText(smallFont, enter);
+        smallFont.draw(batch, enter, centerX - layout.width / 2f, instructY - 22);
+        
+        smallFont.setColor(STONE_MID);
+        String esc = "[ ESC ] Quit";
+        layout.setText(smallFont, esc);
+        smallFont.draw(batch, esc, centerX - layout.width / 2f, instructY - 44);
 
         // Version
-        smallFont.setColor(new Color(0.4f, 0.4f, 0.4f, 1f));
-        smallFont.draw(batch, "v0.5.0 - LibGDX + Domain Integration", 10, 30);
+        smallFont.setColor(new Color(0.3f, 0.25f, 0.2f, 1f));
+        smallFont.draw(batch, "v0.5.1 - Classic Dungeon UI", 20, 30);
 
         batch.end();
     }
 
-    private void drawBackground() {
+    private void drawStoneBackground(float w, float h) {
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
-
-        // Grid pattern
-        for (int x = 0; x < Gdx.graphics.getWidth(); x += 64) {
-            for (int y = 0; y < Gdx.graphics.getHeight(); y += 64) {
-                float alpha = 0.02f + (float) Math.sin((x + y) * 0.01f + titlePulse * 0.5f) * 0.01f;
-                shapeRenderer.setColor(0.3f, 0.3f, 0.4f, alpha);
-                shapeRenderer.rect(x + 2, y + 2, 60, 60);
+        
+        // Base dark stone
+        shapeRenderer.setColor(STONE_DARK.r * 0.5f, STONE_DARK.g * 0.5f, STONE_DARK.b * 0.5f, 1f);
+        shapeRenderer.rect(0, 0, w, h);
+        
+        // Stone brick pattern
+        int brickW = 64;
+        int brickH = 32;
+        for (int y = 0; y < h; y += brickH) {
+            int offset = ((y / brickH) % 2 == 0) ? 0 : brickW / 2;
+            for (int x = -brickW; x < w + brickW; x += brickW) {
+                float variation = 0.4f + (float) Math.sin(x * 0.1 + y * 0.1) * 0.1f;
+                shapeRenderer.setColor(
+                    STONE_DARK.r * variation,
+                    STONE_DARK.g * variation,
+                    STONE_DARK.b * variation, 1f
+                );
+                shapeRenderer.rect(x + offset + 1, y + 1, brickW - 2, brickH - 2);
             }
         }
+        
+        // Vignette effect
+        for (int i = 0; i < 10; i++) {
+            float alpha = 0.05f * (10 - i);
+            shapeRenderer.setColor(0, 0, 0, alpha);
+            shapeRenderer.rect(i * 20, i * 20, w - i * 40, h - i * 40);
+        }
+        
+        shapeRenderer.end();
+    }
 
+    private void drawOrnatePanel(float x, float y, float w, float h) {
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+        
+        // Outer dark border
+        shapeRenderer.setColor(STONE_DARK.r * 0.3f, STONE_DARK.g * 0.3f, STONE_DARK.b * 0.3f, 1f);
+        shapeRenderer.rect(x - 8, y - 8, w + 16, h + 16);
+        
+        // Stone frame
+        shapeRenderer.setColor(STONE_MID);
+        shapeRenderer.rect(x - 4, y - 4, w + 8, h + 8);
+        
+        // Inner panel (parchment-ish)
+        shapeRenderer.setColor(STONE_DARK.r * 0.8f, STONE_DARK.g * 0.8f, STONE_DARK.b * 0.8f, 0.95f);
+        shapeRenderer.rect(x, y, w, h);
+        
+        shapeRenderer.end();
+        
+        // Decorative border
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Line);
+        
+        // Gold inner border
+        shapeRenderer.setColor(GOLD.r * 0.5f, GOLD.g * 0.5f, GOLD.b * 0.3f, 1f);
+        shapeRenderer.rect(x + 10, y + 10, w - 20, h - 20);
+        
+        // Corner accents
+        shapeRenderer.setColor(GOLD);
+        float cornerSize = 20;
+        // Top-left
+        shapeRenderer.line(x + 10, y + h - 10, x + 10, y + h - 10 - cornerSize);
+        shapeRenderer.line(x + 10, y + h - 10, x + 10 + cornerSize, y + h - 10);
+        // Top-right
+        shapeRenderer.line(x + w - 10, y + h - 10, x + w - 10, y + h - 10 - cornerSize);
+        shapeRenderer.line(x + w - 10, y + h - 10, x + w - 10 - cornerSize, y + h - 10);
+        // Bottom-left
+        shapeRenderer.line(x + 10, y + 10, x + 10, y + 10 + cornerSize);
+        shapeRenderer.line(x + 10, y + 10, x + 10 + cornerSize, y + 10);
+        // Bottom-right
+        shapeRenderer.line(x + w - 10, y + 10, x + w - 10, y + 10 + cornerSize);
+        shapeRenderer.line(x + w - 10, y + 10, x + w - 10 - cornerSize, y + 10);
+        
+        shapeRenderer.end();
+    }
+
+    private void drawGoldDivider(float x, float y, float w) {
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+        
+        // Main line
+        shapeRenderer.setColor(GOLD.r * 0.5f, GOLD.g * 0.5f, GOLD.b * 0.3f, 1f);
+        shapeRenderer.rect(x, y, w, 2);
+        
+        // Center diamond
+        float cx = x + w / 2f;
+        shapeRenderer.setColor(GOLD);
+        shapeRenderer.triangle(cx - 6, y + 1, cx + 6, y + 1, cx, y + 8);
+        shapeRenderer.triangle(cx - 6, y + 1, cx + 6, y + 1, cx, y - 6);
+        
+        // End caps
+        shapeRenderer.rect(x, y - 2, 4, 6);
+        shapeRenderer.rect(x + w - 4, y - 2, 4, 6);
+        
         shapeRenderer.end();
     }
 
     private void handleInput() {
-        // Navigation
         if (Gdx.input.isKeyJustPressed(Input.Keys.UP) || Gdx.input.isKeyJustPressed(Input.Keys.W)) {
             selectedIndex = (selectedIndex - 1 + classes.length) % classes.length;
         }
@@ -156,29 +288,18 @@ public class MenuScreen implements Screen {
             selectedIndex = (selectedIndex + 1) % classes.length;
         }
 
-        // Selection
         if (Gdx.input.isKeyJustPressed(Input.Keys.ENTER) || Gdx.input.isKeyJustPressed(Input.Keys.SPACE)) {
             game.startGame(classes[selectedIndex]);
         }
 
-        // Quit
         if (Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE)) {
             Gdx.app.exit();
         }
     }
 
-    @Override
-    public void resize(int width, int height) {}
-
-    @Override
-    public void pause() {}
-
-    @Override
-    public void resume() {}
-
-    @Override
-    public void hide() {}
-
-    @Override
-    public void dispose() {}
+    @Override public void resize(int width, int height) {}
+    @Override public void pause() {}
+    @Override public void resume() {}
+    @Override public void hide() {}
+    @Override public void dispose() {}
 }

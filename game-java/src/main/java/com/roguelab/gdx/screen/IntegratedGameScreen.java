@@ -30,8 +30,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Main game screen that integrates with the real domain model.
- * Uses GameSession to manage game state and CombatEngine for battles.
+ * Daggerfall-style game screen with classic dungeon crawler aesthetics.
+ * Features stone frame UI, character portrait, gothic styling.
  */
 public class IntegratedGameScreen implements Screen {
 
@@ -40,7 +40,7 @@ public class IntegratedGameScreen implements Screen {
     private final ShapeRenderer shapeRenderer;
     private final GlyphLayout layout;
 
-    // Real game objects
+    // Game objects
     private final GameSession session;
     private final Player player;
     private final Dungeon dungeon;
@@ -56,19 +56,33 @@ public class IntegratedGameScreen implements Screen {
     // Message log
     private final List<String> messages = new ArrayList<>();
 
-    // Animation timers
+    // Animation
     private float animTimer = 0;
+    private float displayedPlayerHealth;
+    private float displayedEnemyHealth;
 
-    // Combat state (for visual display)
+    // Combat state
     private Enemy currentEnemy = null;
     private boolean awaitingCombatInput = false;
+    private int combatTurn = 0;
 
     // Telemetry
     private TelemetryWriter telemetryWriter;
 
-    // Room display constants
-    private static final int ROOM_SIZE = 80;
-    private static final int ROOM_SPACING = 100;
+    // Daggerfall UI colors
+    private static final Color STONE_DARK = Assets.STONE_DARK;
+    private static final Color STONE_MID = Assets.STONE_MID;
+    private static final Color STONE_LIGHT = Assets.STONE_LIGHT;
+    private static final Color PARCHMENT = Assets.PARCHMENT_MID;
+    private static final Color GOLD = Assets.GOLD_MID;
+    private static final Color BLOOD = Assets.BLOOD_RED;
+    private static final Color TORCH = Assets.TORCH_ORANGE;
+
+    // UI Layout
+    private static final int PORTRAIT_SIZE = 80;
+    private static final int BAR_WIDTH = 160;
+    private static final int BAR_HEIGHT = 20;
+    private static final int FRAME_BORDER = 8;
 
     public IntegratedGameScreen(RogueLabGame game, PlayerClass playerClass) {
         this.game = game;
@@ -77,7 +91,6 @@ public class IntegratedGameScreen implements Screen {
         this.layout = new GlyphLayout();
         this.effects = new EffectsManager(game);
 
-        // Create game session with random seed
         long seed = System.currentTimeMillis();
         this.session = new GameSession(
             playerClass.getDisplayName(),
@@ -89,20 +102,14 @@ public class IntegratedGameScreen implements Screen {
 
         this.player = session.getPlayer();
         this.dungeon = session.getDungeon();
+        this.displayedPlayerHealth = player.getHealth().getCurrent();
 
-        // Setup telemetry
         setupTelemetry();
-
-        // Setup session listener for messages
         session.setListener(new GameScreenListener());
-
-        // Start the game
         session.start();
-        
-        // Check if first room has combat
         checkForCombat();
 
-        addMessage("Welcome, " + player.getName() + "!");
+        addMessage("You enter the dungeon...");
         addMessage("Seed: " + seed);
     }
 
@@ -112,7 +119,6 @@ public class IntegratedGameScreen implements Screen {
             Path outputFile = Path.of("runs", session.getRunId() + ".jsonl");
             telemetryWriter = new TelemetryWriter(outputFile, session.getRunId(), true);
             
-            // Create telemetry listeners
             SimpleTelemetrySessionListener sessionListener = new SimpleTelemetrySessionListener(telemetryWriter);
             SimpleTelemetryCombatListener combatListener = new SimpleTelemetryCombatListener(telemetryWriter);
             
@@ -124,24 +130,20 @@ public class IntegratedGameScreen implements Screen {
     }
 
     @Override
-    public void show() {
-        Gdx.app.log("IntegratedGameScreen", "Starting game with " + player.getPlayerClass());
-    }
+    public void show() {}
 
     @Override
     public void render(float delta) {
-        // Update
         update(delta);
         updateShake(delta);
+        updateAnimatedHealth(delta);
 
-        // Clear screen
-        Gdx.gl.glClearColor(0.05f, 0.05f, 0.08f, 1f);
+        // Dark dungeon background
+        Gdx.gl.glClearColor(0.05f, 0.04f, 0.03f, 1f);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
 
-        // Apply screen shake
         batch.getProjectionMatrix().translate(shakeOffset.x, shakeOffset.y, 0);
 
-        // Render based on game state
         GameState state = session.getState();
         switch (state) {
             case IN_COMBAT -> renderCombat(delta);
@@ -150,21 +152,28 @@ public class IntegratedGameScreen implements Screen {
             default -> renderExploration(delta);
         }
 
-        // Reset shake for UI
         batch.getProjectionMatrix().translate(-shakeOffset.x, -shakeOffset.y, 0);
 
-        // Render UI overlay
-        renderUI(delta);
-
-        // Render effects
+        // Daggerfall-style UI frame (always on top)
+        renderDaggerfallUI(delta);
+        
         effects.render(batch, delta);
+    }
+
+    private void updateAnimatedHealth(float delta) {
+        float targetPlayerHealth = player.getHealth().getCurrent();
+        displayedPlayerHealth = MathUtils.lerp(displayedPlayerHealth, targetPlayerHealth, 5f * delta);
+        
+        if (currentEnemy != null) {
+            float targetEnemyHealth = currentEnemy.getHealth().getCurrent();
+            displayedEnemyHealth = MathUtils.lerp(displayedEnemyHealth, targetEnemyHealth, 5f * delta);
+        }
     }
 
     private void update(float delta) {
         animTimer += delta;
         effects.update(delta);
 
-        // Check for game end conditions
         if (!session.isActive()) {
             boolean victory = session.getState() == GameState.RUN_ENDED && 
                               player.isAlive() && 
@@ -173,7 +182,6 @@ public class IntegratedGameScreen implements Screen {
             return;
         }
 
-        // Handle input based on state
         GameState state = session.getState();
         switch (state) {
             case EXPLORING -> handleExplorationInput();
@@ -182,7 +190,6 @@ public class IntegratedGameScreen implements Screen {
             case AT_REST -> handleRestInput();
         }
 
-        // ESC to quit
         if (Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE)) {
             session.endRun(GameSessionListener.RunEndReason.ABANDONED);
             game.returnToMenu();
@@ -194,50 +201,47 @@ public class IntegratedGameScreen implements Screen {
     private void handleExplorationInput() {
         Floor floor = dungeon.getCurrentFloor();
 
-        // Move forward
         if (Gdx.input.isKeyJustPressed(Input.Keys.D) || Gdx.input.isKeyJustPressed(Input.Keys.RIGHT)) {
             if (floor.hasNextRoom()) {
                 session.advanceRoom();
+                addMessage("You move deeper into the dungeon...");
                 checkForCombat();
             }
         }
 
-        // Move backward
         if (Gdx.input.isKeyJustPressed(Input.Keys.A) || Gdx.input.isKeyJustPressed(Input.Keys.LEFT)) {
             if (floor.hasPreviousRoom()) {
                 session.returnRoom();
+                addMessage("You retrace your steps...");
             }
         }
 
-        // Interact with room
         if (Gdx.input.isKeyJustPressed(Input.Keys.SPACE) || Gdx.input.isKeyJustPressed(Input.Keys.ENTER)) {
             Room room = session.getCurrentRoom();
             RoomType type = room.getType();
             
             if (type == RoomType.REST && !room.isCleared()) {
                 int healed = session.rest();
-                addMessage("Rested and recovered " + healed + " HP!");
+                addMessage("You rest by the fire and recover " + healed + " health.");
                 effects.addDamageNumber(
                     Gdx.graphics.getWidth() / 2f,
                     Gdx.graphics.getHeight() / 2f,
-                    "+" + healed + " HP",
+                    "+" + healed,
                     Color.GREEN
                 );
                 session.leaveRest();
                 room.markCleared();
             } else if (floor.isAtExit()) {
-                // At the last room - try to descend or win
                 if (dungeon.canDescend()) {
                     session.descendFloor();
-                    addMessage("Descended to floor " + dungeon.getCurrentFloorNumber());
-                    triggerShake(0.3f, 5f);
+                    addMessage("You descend to level " + dungeon.getCurrentFloorNumber() + "...");
+                    triggerShake(0.4f, 6f);
                     checkForCombat();
                 } else if (dungeon.isOnFinalFloor() && floor.allCombatRoomsCleared()) {
-                    // Victory!
-                    addMessage("Victory! You conquered the dungeon!");
+                    addMessage("VICTORY! You have conquered the dungeon!");
                     session.endRun(GameSessionListener.RunEndReason.VICTORY);
                 } else {
-                    addMessage("Clear all combat rooms first!");
+                    addMessage("You must clear all rooms before descending.");
                 }
             }
         }
@@ -246,12 +250,13 @@ public class IntegratedGameScreen implements Screen {
     private void checkForCombat() {
         Room room = session.getCurrentRoom();
         if (room.hasAliveEnemies() && !room.isCleared()) {
-            // Find first alive enemy
             for (Enemy enemy : room.getEnemies()) {
                 if (enemy.isAlive()) {
                     currentEnemy = enemy;
+                    displayedEnemyHealth = enemy.getHealth().getCurrent();
                     awaitingCombatInput = true;
-                    addMessage("Combat started with " + enemy.getName() + "!");
+                    combatTurn = 1;
+                    addMessage("A " + enemy.getName() + " blocks your path!");
                     break;
                 }
             }
@@ -261,39 +266,29 @@ public class IntegratedGameScreen implements Screen {
     private void handleCombatInput() {
         if (awaitingCombatInput) {
             if (Gdx.input.isKeyJustPressed(Input.Keys.SPACE) || Gdx.input.isKeyJustPressed(Input.Keys.ENTER)) {
-                // Execute combat
                 CombatResult result = session.executeCombat();
 
-                // Show effects
-                float enemyX = Gdx.graphics.getWidth() * 0.7f;
-                float enemyY = Gdx.graphics.getHeight() * 0.5f;
-                float playerX = Gdx.graphics.getWidth() * 0.3f;
-                float playerY = Gdx.graphics.getHeight() * 0.5f;
+                float enemyX = Gdx.graphics.getWidth() / 2f;
+                float enemyY = Gdx.graphics.getHeight() / 2f;
 
-                effects.addDamageNumber(enemyX, enemyY + 50, 
-                    "-" + result.totalDamageDealt(), Color.WHITE);
+                effects.addDamageNumber(enemyX + 50, enemyY, "-" + result.totalDamageDealt(), Color.WHITE);
                 effects.addSlash(enemyX, enemyY);
 
                 if (result.totalDamageTaken() > 0) {
-                    effects.addDamageNumber(playerX, playerY + 50,
-                        "-" + result.totalDamageTaken(), Color.RED);
-                    effects.addHit(playerX, playerY);
+                    effects.addDamageNumber(enemyX - 50, enemyY - 50, "-" + result.totalDamageTaken(), Color.RED);
+                    addMessage("The " + currentEnemy.getName() + " strikes you for " + result.totalDamageTaken() + " damage!");
                 }
 
-                triggerShake(0.15f, 5f);
+                triggerShake(0.2f, 8f);
+                combatTurn++;
 
                 if (result.isVictory()) {
-                    addMessage("Victory! Gained " + result.goldEarned() + " gold!");
-                    effects.addDamageNumber(
-                        Gdx.graphics.getWidth() / 2f,
-                        Gdx.graphics.getHeight() / 2f + 100,
-                        "+" + result.goldEarned() + " gold",
-                        Color.GOLD
-                    );
+                    addMessage("The " + currentEnemy.getName() + " is slain! You find " + result.goldEarned() + " gold.");
+                    effects.addDamageNumber(enemyX, enemyY + 50, "+" + result.goldEarned() + " GOLD", GOLD);
                     awaitingCombatInput = false;
                     currentEnemy = null;
-                } else {
-                    addMessage("You were defeated...");
+                } else if (player.isDead()) {
+                    addMessage("You have been slain...");
                 }
             }
         }
@@ -303,22 +298,21 @@ public class IntegratedGameScreen implements Screen {
         Room room = session.getCurrentRoom();
         List<Item> items = room.getItems();
 
-        // Number keys to buy items
         for (int i = 0; i < Math.min(items.size(), 9); i++) {
             if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_1 + i)) {
                 Item item = items.get(i);
                 if (session.purchaseItem(item)) {
-                    addMessage("Purchased " + item.getName() + "!");
+                    addMessage("You purchase " + item.getName() + " for " + item.getValue() + " gold.");
                 } else {
-                    addMessage("Not enough gold!");
+                    addMessage("You cannot afford that.");
                 }
             }
         }
 
-        // Leave shop
         if (Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE) || 
             Gdx.input.isKeyJustPressed(Input.Keys.SPACE)) {
             session.leaveShop();
+            addMessage("You leave the merchant.");
         }
     }
 
@@ -327,8 +321,8 @@ public class IntegratedGameScreen implements Screen {
             Room room = session.getCurrentRoom();
             if (!room.isCleared()) {
                 int healed = session.rest();
-                addMessage("Rested and recovered " + healed + " HP!");
-                effects.addDamageNumber(Gdx.graphics.getWidth() / 2f, Gdx.graphics.getHeight() / 2f, "+" + healed + " HP", Color.GREEN);
+                addMessage("You rest and recover " + healed + " health.");
+                effects.addDamageNumber(Gdx.graphics.getWidth() / 2f, Gdx.graphics.getHeight() / 2f, "+" + healed, Color.GREEN);
                 room.markCleared();
             }
             session.leaveRest();
@@ -338,86 +332,158 @@ public class IntegratedGameScreen implements Screen {
     // === RENDERING ===
 
     private void renderExploration(float delta) {
-        float centerX = Gdx.graphics.getWidth() / 2f;
-        float centerY = Gdx.graphics.getHeight() / 2f;
+        float screenWidth = Gdx.graphics.getWidth();
+        float screenHeight = Gdx.graphics.getHeight();
+        
+        // Main viewport area (inside UI frame)
+        float viewX = 100;
+        float viewY = 140;
+        float viewW = screenWidth - 200;
+        float viewH = screenHeight - 280;
 
+        // Draw dungeon corridor view (Daggerfall-style)
+        renderDungeonCorridor(viewX, viewY, viewW, viewH, delta);
+        
+        // Room minimap in center-bottom
+        renderRoomMinimap(screenWidth / 2f, viewY + 30, delta);
+    }
+
+    private void renderDungeonCorridor(float x, float y, float w, float h, float delta) {
+        Room room = session.getCurrentRoom();
         Floor floor = dungeon.getCurrentFloor();
-        List<Room> rooms = floor.getRooms();
-        int currentRoomIndex = floor.getCurrentRoomIndex();
-
-        // Calculate map offset
-        float mapWidth = rooms.size() * ROOM_SPACING;
-        float mapStartX = centerX - mapWidth / 2f + ROOM_SPACING / 2f;
-        float mapY = centerY + 50;
-
-        // Draw connections
+        
+        // Draw corridor walls (perspective)
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
-        shapeRenderer.setColor(0.3f, 0.3f, 0.35f, 1f);
-        for (int i = 0; i < rooms.size() - 1; i++) {
-            float x1 = mapStartX + i * ROOM_SPACING;
-            float x2 = mapStartX + (i + 1) * ROOM_SPACING;
-            shapeRenderer.rectLine(x1, mapY, x2, mapY, 4);
-        }
+        
+        // Ceiling
+        shapeRenderer.setColor(STONE_DARK);
+        shapeRenderer.rect(x, y + h * 0.6f, w, h * 0.4f);
+        
+        // Floor
+        shapeRenderer.setColor(STONE_MID.r * 0.8f, STONE_MID.g * 0.8f, STONE_MID.b * 0.8f, 1f);
+        shapeRenderer.rect(x, y, w, h * 0.4f);
+        
+        // Left wall with perspective
+        float perspDepth = 0.3f;
+        shapeRenderer.setColor(STONE_MID.r * 0.6f, STONE_MID.g * 0.6f, STONE_MID.b * 0.6f, 1f);
+        shapeRenderer.triangle(
+            x, y,
+            x, y + h,
+            x + w * perspDepth, y + h * (1 - perspDepth)
+        );
+        shapeRenderer.triangle(
+            x, y,
+            x + w * perspDepth, y + h * perspDepth,
+            x + w * perspDepth, y + h * (1 - perspDepth)
+        );
+        
+        // Right wall
+        shapeRenderer.setColor(STONE_MID.r * 0.5f, STONE_MID.g * 0.5f, STONE_MID.b * 0.5f, 1f);
+        shapeRenderer.triangle(
+            x + w, y,
+            x + w, y + h,
+            x + w * (1 - perspDepth), y + h * (1 - perspDepth)
+        );
+        shapeRenderer.triangle(
+            x + w, y,
+            x + w * (1 - perspDepth), y + h * perspDepth,
+            x + w * (1 - perspDepth), y + h * (1 - perspDepth)
+        );
+        
+        // Back wall
+        float backX = x + w * perspDepth;
+        float backY = y + h * perspDepth;
+        float backW = w * (1 - 2 * perspDepth);
+        float backH = h * (1 - 2 * perspDepth);
+        shapeRenderer.setColor(STONE_DARK);
+        shapeRenderer.rect(backX, backY, backW, backH);
+        
         shapeRenderer.end();
 
-        // Draw rooms
+        // Draw room content
         batch.begin();
+        
+        float centerX = x + w / 2f;
+        float centerY = y + h / 2f;
+        
+        // Room type icon/content
+        TextureRegion roomTile = game.getAssets().getTile(getRoomTileKey(room.getType()));
+        float iconSize = Math.min(backW, backH) * 0.6f;
+        batch.draw(roomTile, centerX - iconSize / 2f, centerY - iconSize / 2f, iconSize, iconSize);
 
+        // Torchlight flicker effect
+        float flicker = 0.9f + MathUtils.sin(animTimer * 8) * 0.1f;
+        batch.setColor(TORCH.r * flicker, TORCH.g * flicker, TORCH.b * 0.5f, 0.15f);
+        batch.draw(game.getAssets().getWhitePixel(), x, y, w, h);
+        batch.setColor(Color.WHITE);
+
+        BitmapFont font = game.getAssets().getNormalFont();
+        
+        // Room name
+        font.setColor(PARCHMENT);
+        String roomName = getRoomDisplayName(room.getType());
+        layout.setText(font, roomName);
+        font.draw(batch, roomName, centerX - layout.width / 2f, y + h - 20);
+        
+        // Room status
+        BitmapFont smallFont = game.getAssets().getSmallFont();
+        smallFont.setColor(room.isCleared() ? Color.GREEN : Color.LIGHT_GRAY);
+        String status = room.isCleared() ? "[CLEARED]" : getRoomStatus(room, floor);
+        layout.setText(smallFont, status);
+        smallFont.draw(batch, status, centerX - layout.width / 2f, y + 40);
+
+        batch.end();
+    }
+
+    private void renderRoomMinimap(float centerX, float y, float delta) {
+        Floor floor = dungeon.getCurrentFloor();
+        List<Room> rooms = floor.getRooms();
+        int currentIdx = floor.getCurrentRoomIndex();
+        
+        int roomSize = 24;
+        int spacing = 32;
+        float mapWidth = rooms.size() * spacing;
+        float startX = centerX - mapWidth / 2f + spacing / 2f;
+        
+        // Draw connections
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+        shapeRenderer.setColor(STONE_MID);
+        for (int i = 0; i < rooms.size() - 1; i++) {
+            float x1 = startX + i * spacing;
+            float x2 = startX + (i + 1) * spacing;
+            shapeRenderer.rectLine(x1, y, x2, y, 2);
+        }
+        shapeRenderer.end();
+        
+        batch.begin();
         for (int i = 0; i < rooms.size(); i++) {
             Room room = rooms.get(i);
-            float roomX = mapStartX + i * ROOM_SPACING - ROOM_SIZE / 2f;
-            float roomY = mapY - ROOM_SIZE / 2f;
-
+            float rx = startX + i * spacing - roomSize / 2f;
+            float ry = y - roomSize / 2f;
+            
+            boolean current = (i == currentIdx);
             boolean visited = room.isVisited();
-            boolean current = (i == currentRoomIndex);
-            boolean cleared = room.isCleared();
-
-            // Get room tile
-            TextureRegion tile = getRoomTile(room.getType(), visited);
-
-            // Draw room
-            if (visited || current) {
-                batch.setColor(current ? Color.WHITE : new Color(0.7f, 0.7f, 0.7f, 1f));
-            } else {
-                batch.setColor(new Color(0.3f, 0.3f, 0.3f, 1f));
-            }
-            batch.draw(tile, roomX, roomY, ROOM_SIZE, ROOM_SIZE);
-
-            // Draw cleared marker
-            if (cleared) {
-                batch.setColor(new Color(0.2f, 0.8f, 0.2f, 0.3f));
-                batch.draw(game.getAssets().getWhitePixel(), roomX, roomY, ROOM_SIZE, ROOM_SIZE);
-            }
-
-            // Draw player on current room
+            
+            // Room tile
+            TextureRegion tile = game.getAssets().getTile(visited ? getRoomTileKey(room.getType()) : "fog");
+            
             if (current) {
-                TextureRegion playerSprite = game.getAssets().getPlayerSprite(
-                    player.getPlayerClass().name()
-                );
-                batch.setColor(Color.WHITE);
-                batch.draw(playerSprite, roomX + ROOM_SIZE / 2f - 16, roomY + ROOM_SIZE / 2f - 16, 32, 32);
+                // Highlight current room
+                batch.setColor(GOLD.r, GOLD.g, GOLD.b, 0.5f + MathUtils.sin(animTimer * 4) * 0.3f);
+                batch.draw(game.getAssets().getWhitePixel(), rx - 4, ry - 4, roomSize + 8, roomSize + 8);
             }
-
+            
+            batch.setColor(visited || current ? Color.WHITE : new Color(0.3f, 0.3f, 0.3f, 1f));
+            batch.draw(tile, rx, ry, roomSize, roomSize);
+            
+            // Cleared checkmark
+            if (room.isCleared()) {
+                batch.setColor(0.3f, 0.8f, 0.3f, 0.7f);
+                batch.draw(game.getAssets().getWhitePixel(), rx, ry, roomSize, roomSize);
+            }
+            
             batch.setColor(Color.WHITE);
         }
-
-        // Floor indicator
-        BitmapFont normalFont = game.getAssets().getNormalFont();
-        normalFont.setColor(Color.WHITE);
-        String floorText = "FLOOR " + dungeon.getCurrentFloorNumber() + "/" + dungeon.getMaxFloors();
-        layout.setText(normalFont, floorText);
-        normalFont.draw(batch, floorText, centerX - layout.width / 2, mapY + ROOM_SIZE / 2f + 60);
-
-        // Room info
-        drawRoomInfo(centerY - 120);
-
-        // Controls
-        BitmapFont smallFont = game.getAssets().getSmallFont();
-        smallFont.setColor(Color.GRAY);
-        String controls = "A/D to move | SPACE to interact | ESC for menu";
-        layout.setText(smallFont, controls);
-        smallFont.draw(batch, controls, centerX - layout.width / 2, 40);
-
         batch.end();
     }
 
@@ -426,309 +492,494 @@ public class IntegratedGameScreen implements Screen {
 
         float screenWidth = Gdx.graphics.getWidth();
         float screenHeight = Gdx.graphics.getHeight();
-        float centerY = screenHeight / 2f;
-
-        float playerX = screenWidth * 0.25f;
-        float enemyX = screenWidth * 0.75f;
-
-        // Arena background
+        
+        float viewX = 100;
+        float viewY = 140;
+        float viewW = screenWidth - 200;
+        float viewH = screenHeight - 280;
+        
+        // Dark combat arena
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
-        shapeRenderer.setColor(0.2f, 0.18f, 0.15f, 1f);
-        shapeRenderer.rect(0, 0, screenWidth, screenHeight * 0.35f);
-        shapeRenderer.setColor(0.15f, 0.13f, 0.12f, 1f);
-        shapeRenderer.ellipse(screenWidth * 0.1f, screenHeight * 0.1f, 
-            screenWidth * 0.8f, screenHeight * 0.3f);
+        shapeRenderer.setColor(0.08f, 0.05f, 0.03f, 1f);
+        shapeRenderer.rect(viewX, viewY, viewW, viewH);
+        
+        // Blood-red vignette for boss
+        if (currentEnemy.getType().isBoss()) {
+            for (int i = 0; i < 5; i++) {
+                float alpha = 0.1f - i * 0.02f;
+                shapeRenderer.setColor(0.5f, 0.1f, 0.05f, alpha);
+                shapeRenderer.rect(viewX + i * 20, viewY + i * 20, viewW - i * 40, viewH - i * 40);
+            }
+        }
         shapeRenderer.end();
 
         batch.begin();
-
-        // Draw player
-        float bobOffset = MathUtils.sin(animTimer * 3) * 5;
-        TextureRegion playerSprite = game.getAssets().getPlayerSprite(player.getPlayerClass().name());
-        batch.draw(playerSprite, playerX - 64, centerY - 64 + bobOffset, 128, 128);
-
-        // Draw enemy
-        float enemyBob = MathUtils.sin(animTimer * 2.5f) * 4;
+        
+        float centerX = viewX + viewW / 2f;
+        float centerY = viewY + viewH / 2f;
+        
+        // Enemy sprite (large, centered, Daggerfall-style)
+        float bob = MathUtils.sin(animTimer * 2) * 8;
         TextureRegion enemySprite = game.getAssets().getEnemySprite(currentEnemy.getType().name());
-        int enemySize = currentEnemy.getType().isBoss() ? 180 : 128;
-        batch.draw(enemySprite, enemyX - enemySize / 2f, centerY - enemySize / 2f + enemyBob, 
-            enemySize, enemySize);
-
+        int spriteSize = currentEnemy.getType().isBoss() ? 200 : 160;
+        
+        // Damage flash
+        float healthPct = (float) currentEnemy.getHealth().getCurrent() / currentEnemy.getHealth().getMaximum();
+        if (healthPct < 0.3f) {
+            float flash = MathUtils.sin(animTimer * 10) * 0.4f + 0.6f;
+            batch.setColor(1f, flash, flash, 1f);
+        }
+        
+        batch.draw(enemySprite, centerX - spriteSize / 2f, centerY - spriteSize / 2f + bob, spriteSize, spriteSize);
+        batch.setColor(Color.WHITE);
+        
+        // Enemy name plate
+        BitmapFont font = game.getAssets().getNormalFont();
+        font.setColor(currentEnemy.getType().isBoss() ? TORCH : PARCHMENT);
+        String enemyName = currentEnemy.getName().toUpperCase();
+        layout.setText(font, enemyName);
+        font.draw(batch, enemyName, centerX - layout.width / 2f, viewY + viewH - 20);
+        
+        // Enemy health bar (under name)
         batch.end();
-
-        // Health bars
-        drawHealthBar(playerX, centerY - 100, 
-            player.getHealth().getCurrent(), player.getHealth().getMaximum(),
-            Color.GREEN, player.getName());
-        drawHealthBar(enemyX, centerY - 100,
-            currentEnemy.getHealth().getCurrent(), currentEnemy.getHealth().getMaximum(),
-            currentEnemy.getType().isBoss() ? Color.ORANGE : Color.RED, 
-            currentEnemy.getName());
-
+        drawHealthBar(centerX - 100, viewY + viewH - 55, 200, 18, 
+            displayedEnemyHealth, currentEnemy.getHealth().getMaximum(),
+            currentEnemy.getType().isBoss() ? TORCH : BLOOD);
         batch.begin();
-
-        // Turn indicator
-        BitmapFont normalFont = game.getAssets().getNormalFont();
-        float alpha = 0.5f + MathUtils.sin(animTimer * 5) * 0.3f;
-        normalFont.setColor(new Color(0.3f, 0.9f, 0.3f, alpha));
-        layout.setText(normalFont, ">>> PRESS SPACE TO ATTACK <<<");
-        normalFont.draw(batch, ">>> PRESS SPACE TO ATTACK <<<", 
-            playerX - layout.width / 2f, centerY + 150);
-
-        // Combat title
-        BitmapFont titleFont = game.getAssets().getTitleFont();
-        titleFont.setColor(Color.RED);
-        titleFont.getData().setScale(2f);
-        String title = currentEnemy.getType().isBoss() ? "BOSS BATTLE!" : "COMBAT";
-        layout.setText(titleFont, title);
-        titleFont.draw(batch, title, screenWidth / 2f - layout.width / 2f, screenHeight - 30);
-        titleFont.getData().setScale(3f);
-
+        
+        // Combat turn indicator
+        BitmapFont smallFont = game.getAssets().getSmallFont();
+        smallFont.setColor(STONE_LIGHT);
+        String turnText = "Turn " + combatTurn;
+        layout.setText(smallFont, turnText);
+        smallFont.draw(batch, turnText, centerX - layout.width / 2f, viewY + 30);
+        
+        // Attack prompt (pulsing)
+        float pulse = 0.6f + MathUtils.sin(animTimer * 5) * 0.4f;
+        font.setColor(GOLD.r, GOLD.g, GOLD.b, pulse);
+        String prompt = "[ PRESS SPACE TO ATTACK ]";
+        layout.setText(font, prompt);
+        font.draw(batch, prompt, centerX - layout.width / 2f, viewY + 60);
+        
         batch.end();
     }
 
     private void renderShop(float delta) {
+        float screenWidth = Gdx.graphics.getWidth();
+        float screenHeight = Gdx.graphics.getHeight();
+        
+        float viewX = 100;
+        float viewY = 140;
+        float viewW = screenWidth - 200;
+        float viewH = screenHeight - 280;
+
+        // Parchment background
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+        shapeRenderer.setColor(PARCHMENT.r * 0.7f, PARCHMENT.g * 0.7f, PARCHMENT.b * 0.7f, 1f);
+        shapeRenderer.rect(viewX, viewY, viewW, viewH);
+        
+        // Darker border
+        shapeRenderer.setColor(STONE_DARK);
+        shapeRenderer.rect(viewX, viewY, viewW, 4);
+        shapeRenderer.rect(viewX, viewY + viewH - 4, viewW, 4);
+        shapeRenderer.rect(viewX, viewY, 4, viewH);
+        shapeRenderer.rect(viewX + viewW - 4, viewY, 4, viewH);
+        shapeRenderer.end();
+
         batch.begin();
-        
-        float centerX = Gdx.graphics.getWidth() / 2f;
-        float centerY = Gdx.graphics.getHeight() / 2f;
-        
+
         BitmapFont titleFont = game.getAssets().getTitleFont();
-        BitmapFont normalFont = game.getAssets().getNormalFont();
+        BitmapFont font = game.getAssets().getNormalFont();
         BitmapFont smallFont = game.getAssets().getSmallFont();
+
+        float centerX = viewX + viewW / 2f;
         
-        titleFont.setColor(Color.GOLD);
+        // Title
+        titleFont.setColor(STONE_DARK);
         titleFont.getData().setScale(2f);
-        layout.setText(titleFont, "SHOP");
-        titleFont.draw(batch, "SHOP", centerX - layout.width / 2, centerY + 200);
+        layout.setText(titleFont, "MERCHANT");
+        titleFont.draw(batch, "MERCHANT", centerX - layout.width / 2f, viewY + viewH - 20);
         titleFont.getData().setScale(3f);
-        
+
+        // Items
         Room room = session.getCurrentRoom();
         List<Item> items = room.getItems();
         
-        float y = centerY + 100;
+        float itemY = viewY + viewH - 80;
         for (int i = 0; i < items.size(); i++) {
             Item item = items.get(i);
             boolean canAfford = player.getInventory().getGold() >= item.getValue();
             
-            normalFont.setColor(canAfford ? Color.WHITE : Color.GRAY);
-            String line = (i + 1) + ". " + item.getName() + " - " + item.getValue() + " gold";
-            layout.setText(normalFont, line);
-            normalFont.draw(batch, line, centerX - layout.width / 2, y);
-            y -= 40;
+            // Item number
+            font.setColor(canAfford ? STONE_DARK : STONE_LIGHT);
+            font.draw(batch, "[" + (i + 1) + "]", viewX + 30, itemY);
+            
+            // Item name
+            font.draw(batch, item.getName(), viewX + 80, itemY);
+            
+            // Stats
+            smallFont.setColor(canAfford ? new Color(0.2f, 0.4f, 0.2f, 1f) : STONE_LIGHT);
+            String stats = "";
+            if (item.getAttackBonus() > 0) stats += "+" + item.getAttackBonus() + " ATK ";
+            if (item.getDefenseBonus() > 0) stats += "+" + item.getDefenseBonus() + " DEF ";
+            if (item.getHealthBonus() > 0) stats += "+" + item.getHealthBonus() + " HP";
+            smallFont.draw(batch, stats, viewX + 280, itemY);
+            
+            // Price
+            font.setColor(canAfford ? GOLD : BLOOD);
+            layout.setText(font, item.getValue() + " gold");
+            font.draw(batch, item.getValue() + " gold", viewX + viewW - layout.width - 40, itemY);
+            
+            itemY -= 40;
         }
-        
-        smallFont.setColor(Color.GRAY);
-        layout.setText(smallFont, "Press number to buy | SPACE to leave");
-        smallFont.draw(batch, "Press number to buy | SPACE to leave", 
-            centerX - layout.width / 2, 60);
-        
+
+        // Your gold
+        font.setColor(GOLD);
+        String goldText = "Your Gold: " + player.getInventory().getGold();
+        layout.setText(font, goldText);
+        font.draw(batch, goldText, centerX - layout.width / 2f, viewY + 50);
+
+        // Instructions
+        smallFont.setColor(STONE_MID);
+        layout.setText(smallFont, "[1-9] Purchase   [SPACE] Leave");
+        smallFont.draw(batch, "[1-9] Purchase   [SPACE] Leave", centerX - layout.width / 2f, viewY + 25);
+
         batch.end();
     }
 
     private void renderRest(float delta) {
-        // Rest is now handled immediately in exploration
-        renderExploration(delta);
+        float screenWidth = Gdx.graphics.getWidth();
+        float screenHeight = Gdx.graphics.getHeight();
+        
+        float viewX = 100;
+        float viewY = 140;
+        float viewW = screenWidth - 200;
+        float viewH = screenHeight - 280;
+
+        // Dark background with fire glow
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+        shapeRenderer.setColor(0.1f, 0.08f, 0.05f, 1f);
+        shapeRenderer.rect(viewX, viewY, viewW, viewH);
+        
+        // Fire glow
+        float glowPulse = 0.8f + MathUtils.sin(animTimer * 3) * 0.2f;
+        for (int i = 0; i < 8; i++) {
+            float alpha = 0.15f * glowPulse - i * 0.015f;
+            shapeRenderer.setColor(1f, 0.5f, 0.2f, alpha);
+            float r = 80 + i * 20;
+            shapeRenderer.circle(viewX + viewW / 2f, viewY + viewH / 2f - 30, r);
+        }
+        shapeRenderer.end();
+
+        batch.begin();
+
+        float centerX = viewX + viewW / 2f;
+        float centerY = viewY + viewH / 2f;
+
+        // Campfire sprite
+        TextureRegion fireTile = game.getAssets().getTile("rest");
+        batch.draw(fireTile, centerX - 48, centerY - 60, 96, 96);
+
+        BitmapFont font = game.getAssets().getNormalFont();
+        BitmapFont smallFont = game.getAssets().getSmallFont();
+
+        // Rest text
+        font.setColor(PARCHMENT);
+        layout.setText(font, "REST SITE");
+        font.draw(batch, "REST SITE", centerX - layout.width / 2f, viewY + viewH - 30);
+
+        // Heal amount preview
+        int maxHeal = (int)(player.getHealth().getMaximum() * 0.30);
+        int actualHeal = Math.min(maxHeal, player.getHealth().getMaximum() - player.getHealth().getCurrent());
+        
+        smallFont.setColor(Color.GREEN);
+        String healText = "Recover " + actualHeal + " health (30%)";
+        layout.setText(smallFont, healText);
+        smallFont.draw(batch, healText, centerX - layout.width / 2f, centerY + 80);
+
+        // Prompt
+        float pulse = 0.6f + MathUtils.sin(animTimer * 4) * 0.4f;
+        font.setColor(GOLD.r, GOLD.g, GOLD.b, pulse);
+        layout.setText(font, "[ PRESS SPACE TO REST ]");
+        font.draw(batch, "[ PRESS SPACE TO REST ]", centerX - layout.width / 2f, viewY + 40);
+
+        batch.end();
     }
 
-    private void renderUI(float delta) {
+    // === DAGGERFALL UI FRAME ===
+
+    private void renderDaggerfallUI(float delta) {
         float screenWidth = Gdx.graphics.getWidth();
         float screenHeight = Gdx.graphics.getHeight();
 
-        // Stats panel (top left)
-        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
-        shapeRenderer.setColor(0.1f, 0.1f, 0.15f, 0.85f);
-        shapeRenderer.rect(10, screenHeight - 150, 220, 140);
-        shapeRenderer.end();
+        // Stone frame around entire screen
+        drawStoneFrame(0, 0, screenWidth, screenHeight, 12);
+
+        // Top bar (dungeon info)
+        drawStonePanel(12, screenHeight - 50, screenWidth - 24, 38);
+        
+        // Bottom bar (message log)
+        drawStonePanel(12, 12, screenWidth - 24, 120);
+        
+        // Left panel (character)
+        drawStonePanel(12, 140, 80, screenHeight - 200);
+        
+        // Right panel (stats)
+        drawStonePanel(screenWidth - 92, 140, 80, screenHeight - 200);
 
         batch.begin();
 
-        BitmapFont normalFont = game.getAssets().getNormalFont();
+        BitmapFont font = game.getAssets().getNormalFont();
         BitmapFont smallFont = game.getAssets().getSmallFont();
 
-        float textX = 25;
-        float textY = screenHeight - 25;
+        // === TOP BAR ===
+        font.setColor(PARCHMENT);
+        String dungeonInfo = "FLOOR " + dungeon.getCurrentFloorNumber() + " OF " + dungeon.getMaxFloors();
+        layout.setText(font, dungeonInfo);
+        font.draw(batch, dungeonInfo, screenWidth / 2f - layout.width / 2f, screenHeight - 22);
 
-        // Class name
-        normalFont.setColor(getClassColor(player.getPlayerClass()));
-        normalFont.draw(batch, player.getPlayerClass().getDisplayName(), textX, textY);
-        textY -= 35;
+        // === LEFT PANEL (Character) ===
+        float leftX = 20;
+        float leftY = screenHeight - 80;
 
-        // Health
-        smallFont.setColor(Color.WHITE);
-        smallFont.draw(batch, "HP: " + player.getHealth().getCurrent() + "/" + 
-            player.getHealth().getMaximum(), textX, textY);
-        textY -= 22;
+        // Portrait
+        TextureRegion portrait = game.getAssets().getPortrait(player.getPlayerClass().name());
+        batch.draw(portrait, leftX, leftY - 60, 64, 64);
 
-        // Stats
-        smallFont.setColor(Color.LIGHT_GRAY);
-        smallFont.draw(batch, "ATK: " + player.getEffectiveAttack(), textX, textY);
-        textY -= 22;
-        smallFont.draw(batch, "DEF: " + player.getEffectiveDefense(), textX, textY);
-        textY -= 22;
-        smallFont.draw(batch, "Floor: " + dungeon.getCurrentFloorNumber() + "/" + 
-            dungeon.getMaxFloors(), textX, textY);
+        // Class name below
+        smallFont.setColor(getClassColor(player.getPlayerClass()));
+        layout.setText(smallFont, player.getPlayerClass().name().substring(0, 3));
+        smallFont.draw(batch, player.getPlayerClass().name().substring(0, 3), leftX + 32 - layout.width / 2f, leftY - 70);
 
-        // Gold (top right)
-        normalFont.setColor(Color.GOLD);
-        String goldText = "$ " + player.getInventory().getGold();
-        layout.setText(normalFont, goldText);
-        normalFont.draw(batch, goldText, screenWidth - layout.width - 20, screenHeight - 25);
+        // Level
+        smallFont.setColor(GOLD);
+        smallFont.draw(batch, "Lv" + player.getLevel(), leftX + 10, leftY - 90);
 
         batch.end();
 
-        // Message log (bottom)
-        renderMessageLog();
-    }
-
-    private void renderMessageLog() {
-        float logWidth = Gdx.graphics.getWidth() - 20;
-        float logHeight = 120;
-
-        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
-        shapeRenderer.setColor(0.08f, 0.08f, 0.1f, 0.8f);
-        shapeRenderer.rect(10, 10, logWidth, logHeight);
-        shapeRenderer.end();
+        // Health bar (vertical style for left panel)
+        drawVerticalBar(leftX + 10, 150, 20, 150, 
+            displayedPlayerHealth, player.getHealth().getMaximum(), 
+            new Color(0.2f, 0.6f, 0.2f, 1f), BLOOD);
 
         batch.begin();
 
-        BitmapFont smallFont = game.getAssets().getSmallFont();
-        float textY = logHeight - 5;
+        // HP label
+        smallFont.setColor(PARCHMENT);
+        smallFont.draw(batch, "HP", leftX + 40, 310);
+        smallFont.draw(batch, (int)displayedPlayerHealth + "", leftX + 40, 290);
 
-        for (int i = messages.size() - 1; i >= 0 && textY > 15; i--) {
-            String msg = messages.get(i);
-            float alpha = 1f - (messages.size() - 1 - i) * 0.15f;
-            alpha = Math.max(0.3f, alpha);
+        // === RIGHT PANEL (Stats) ===
+        float rightX = screenWidth - 85;
+        float rightY = screenHeight - 80;
 
-            if (msg.contains("damage") || msg.contains("defeated")) {
-                smallFont.setColor(new Color(1f, 0.5f, 0.5f, alpha));
-            } else if (msg.contains("Victory") || msg.contains("gold") || msg.contains("HP")) {
-                smallFont.setColor(new Color(0.5f, 1f, 0.5f, alpha));
-            } else {
-                smallFont.setColor(new Color(0.8f, 0.8f, 0.8f, alpha));
-            }
+        smallFont.setColor(PARCHMENT);
+        smallFont.draw(batch, "ATK", rightX + 5, rightY);
+        font.setColor(TORCH);
+        font.draw(batch, "" + player.getEffectiveAttack(), rightX + 5, rightY - 20);
 
-            smallFont.draw(batch, "> " + msg, 25, textY);
-            textY -= 20;
+        smallFont.setColor(PARCHMENT);
+        smallFont.draw(batch, "DEF", rightX + 5, rightY - 50);
+        font.setColor(new Color(0.4f, 0.6f, 0.9f, 1f));
+        font.draw(batch, "" + player.getEffectiveDefense(), rightX + 5, rightY - 70);
+
+        smallFont.setColor(PARCHMENT);
+        smallFont.draw(batch, "GOLD", rightX + 5, rightY - 100);
+        font.setColor(GOLD);
+        font.draw(batch, "" + player.getInventory().getGold(), rightX + 5, rightY - 120);
+
+        // Items count
+        int items = player.getInventory().getItems().size();
+        if (items > 0) {
+            smallFont.setColor(PARCHMENT);
+            smallFont.draw(batch, "ITEMS", rightX + 5, rightY - 150);
+            font.setColor(PARCHMENT);
+            font.draw(batch, "" + items, rightX + 5, rightY - 170);
         }
 
+        // === BOTTOM PANEL (Message Log) ===
+        float msgY = 115;
+        for (int i = messages.size() - 1; i >= 0 && msgY > 25; i--) {
+            String msg = messages.get(i);
+            float alpha = 1f - (messages.size() - 1 - i) * 0.2f;
+            alpha = Math.max(0.3f, alpha);
+
+            smallFont.setColor(getMessageColor(msg, alpha));
+            smallFont.draw(batch, "> " + msg, 30, msgY);
+            msgY -= 18;
+        }
+
+        // Controls hint
+        smallFont.setColor(STONE_LIGHT);
+        String controls = "[A/D] Move   [SPACE] Action   [ESC] Quit";
+        layout.setText(smallFont, controls);
+        smallFont.draw(batch, controls, screenWidth / 2f - layout.width / 2f, 18);
+
         batch.end();
     }
 
-    private void drawHealthBar(float x, float y, int current, int max, Color color, String name) {
-        float barWidth = 150;
-        float barHeight = 16;
-        float percent = Math.max(0, (float) current / max);
-
+    private void drawStoneFrame(float x, float y, float w, float h, float thickness) {
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
-        shapeRenderer.setColor(0.2f, 0.2f, 0.2f, 1f);
-        shapeRenderer.rect(x - barWidth / 2f, y, barWidth, barHeight);
+        
+        // Outer dark
+        shapeRenderer.setColor(STONE_DARK);
+        shapeRenderer.rect(x, y, w, thickness); // Bottom
+        shapeRenderer.rect(x, y + h - thickness, w, thickness); // Top
+        shapeRenderer.rect(x, y, thickness, h); // Left
+        shapeRenderer.rect(x + w - thickness, y, thickness, h); // Right
+        
+        // Inner bevel (lighter)
+        shapeRenderer.setColor(STONE_MID);
+        float t2 = thickness * 0.6f;
+        shapeRenderer.rect(x + t2, y + t2, w - t2 * 2, thickness - t2); // Bottom inner
+        shapeRenderer.rect(x + t2, y + h - thickness, w - t2 * 2, thickness - t2); // Top inner
+        
+        // Highlight
+        shapeRenderer.setColor(STONE_LIGHT);
+        shapeRenderer.rect(x + thickness * 0.3f, y + h - thickness * 0.5f, w - thickness * 0.6f, 2);
+        shapeRenderer.rect(x + thickness * 0.3f, y + thickness * 0.3f, 2, h - thickness * 0.6f);
+        
+        shapeRenderer.end();
+    }
+
+    private void drawStonePanel(float x, float y, float w, float h) {
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+        
+        // Background
+        shapeRenderer.setColor(STONE_DARK.r * 0.7f, STONE_DARK.g * 0.7f, STONE_DARK.b * 0.7f, 0.95f);
+        shapeRenderer.rect(x, y, w, h);
+        
+        // Border
+        shapeRenderer.setColor(STONE_MID);
+        shapeRenderer.rect(x, y, w, 3);
+        shapeRenderer.rect(x, y + h - 3, w, 3);
+        shapeRenderer.rect(x, y, 3, h);
+        shapeRenderer.rect(x + w - 3, y, 3, h);
+        
+        // Inner highlight
+        shapeRenderer.setColor(STONE_LIGHT.r, STONE_LIGHT.g, STONE_LIGHT.b, 0.3f);
+        shapeRenderer.rect(x + 3, y + h - 4, w - 6, 1);
+        shapeRenderer.rect(x + 3, y + 3, 1, h - 6);
+        
+        shapeRenderer.end();
+    }
+
+    private void drawHealthBar(float x, float y, float w, float h, float current, float max, Color color) {
+        float pct = Math.max(0, current / max);
+        
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+        
+        // Background
+        shapeRenderer.setColor(0.1f, 0.08f, 0.06f, 1f);
+        shapeRenderer.rect(x, y, w, h);
+        
+        // Fill
+        shapeRenderer.setColor(color.r * 0.6f, color.g * 0.6f, color.b * 0.6f, 1f);
+        shapeRenderer.rect(x + 2, y + 2, (w - 4) * pct, h - 4);
         shapeRenderer.setColor(color);
-        shapeRenderer.rect(x - barWidth / 2f, y, barWidth * percent, barHeight);
+        shapeRenderer.rect(x + 2, y + h * 0.4f, (w - 4) * pct, h * 0.4f);
+        
+        // Frame
+        shapeRenderer.setColor(STONE_MID);
+        shapeRenderer.rect(x, y, w, 2);
+        shapeRenderer.rect(x, y + h - 2, w, 2);
+        shapeRenderer.rect(x, y, 2, h);
+        shapeRenderer.rect(x + w - 2, y, 2, h);
+        
         shapeRenderer.end();
 
+        // Text
         batch.begin();
         BitmapFont smallFont = game.getAssets().getSmallFont();
         smallFont.setColor(Color.WHITE);
-        String text = current + "/" + max;
+        String text = (int) current + "/" + (int) max;
         layout.setText(smallFont, text);
-        smallFont.draw(batch, text, x - layout.width / 2f, y + barHeight / 2f + layout.height / 2f);
-
-        BitmapFont normalFont = game.getAssets().getNormalFont();
-        normalFont.setColor(color);
-        layout.setText(normalFont, name);
-        normalFont.draw(batch, name, x - layout.width / 2f, y + barHeight + 30);
+        smallFont.draw(batch, text, x + w / 2f - layout.width / 2f, y + h / 2f + layout.height / 2f);
         batch.end();
     }
 
-    private void drawRoomInfo(float y) {
-        float centerX = Gdx.graphics.getWidth() / 2f;
-        Room room = session.getCurrentRoom();
-        Floor floor = dungeon.getCurrentFloor();
-
-        BitmapFont normalFont = game.getAssets().getNormalFont();
-        BitmapFont smallFont = game.getAssets().getSmallFont();
-
-        normalFont.setColor(getRoomColor(room.getType()));
-        String roomName = getRoomName(room.getType());
-        if (room.isCleared()) roomName += " (Cleared)";
-        if (floor.isAtExit()) roomName = "Exit - " + roomName;
-        layout.setText(normalFont, roomName);
-        normalFont.draw(batch, roomName, centerX - layout.width / 2, y);
-
-        smallFont.setColor(Color.LIGHT_GRAY);
-        String desc = getRoomDescription(room, floor);
-        layout.setText(smallFont, desc);
-        smallFont.draw(batch, desc, centerX - layout.width / 2, y - 35);
+    private void drawVerticalBar(float x, float y, float w, float h, float current, float max, Color fullColor, Color emptyColor) {
+        float pct = Math.max(0, current / max);
+        
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+        
+        // Background
+        shapeRenderer.setColor(emptyColor.r * 0.3f, emptyColor.g * 0.3f, emptyColor.b * 0.3f, 1f);
+        shapeRenderer.rect(x, y, w, h);
+        
+        // Fill from bottom
+        Color fillColor = pct > 0.3f ? fullColor : (pct > 0.15f ? TORCH : emptyColor);
+        shapeRenderer.setColor(fillColor);
+        shapeRenderer.rect(x + 2, y + 2, w - 4, (h - 4) * pct);
+        
+        // Frame
+        shapeRenderer.setColor(STONE_MID);
+        shapeRenderer.rect(x, y, w, 2);
+        shapeRenderer.rect(x, y + h - 2, w, 2);
+        shapeRenderer.rect(x, y, 2, h);
+        shapeRenderer.rect(x + w - 2, y, 2, h);
+        
+        shapeRenderer.end();
     }
 
     // === HELPERS ===
 
-    private TextureRegion getRoomTile(RoomType type, boolean visited) {
-        if (!visited) return game.getAssets().getTile("fog");
-
+    private String getRoomTileKey(RoomType type) {
         return switch (type) {
-            case COMBAT -> game.getAssets().getTile("combat");
-            case BOSS -> game.getAssets().getTile("boss");
-            case TREASURE -> game.getAssets().getTile("chest");
-            case SHOP -> game.getAssets().getTile("shop");
-            case REST -> game.getAssets().getTile("rest");
-            case EVENT -> game.getAssets().getTile("floor");
+            case COMBAT -> "combat";
+            case BOSS -> "boss";
+            case TREASURE -> "chest";
+            case SHOP -> "shop";
+            case REST -> "rest";
+            case EVENT -> "floor";
         };
     }
 
-    private Color getRoomColor(RoomType type) {
+    private String getRoomDisplayName(RoomType type) {
         return switch (type) {
-            case COMBAT -> new Color(0.9f, 0.3f, 0.3f, 1f);
-            case BOSS -> new Color(1f, 0.5f, 0.1f, 1f);
-            case TREASURE -> new Color(1f, 0.85f, 0.2f, 1f);
-            case SHOP -> new Color(0.3f, 0.8f, 0.9f, 1f);
-            case REST -> new Color(0.3f, 0.9f, 0.4f, 1f);
-            case EVENT -> Color.LIGHT_GRAY;
+            case COMBAT -> "MONSTER LAIR";
+            case BOSS -> "BOSS CHAMBER";
+            case TREASURE -> "TREASURE ROOM";
+            case SHOP -> "MERCHANT";
+            case REST -> "CAMPFIRE";
+            case EVENT -> "MYSTERIOUS CHAMBER";
         };
     }
 
-    private String getRoomName(RoomType type) {
-        return switch (type) {
-            case COMBAT -> "Monster Den";
-            case BOSS -> "Boss Chamber";
-            case TREASURE -> "Treasure Room";
-            case SHOP -> "Merchant";
-            case REST -> "Rest Site";
-            case EVENT -> "Strange Room";
-        };
-    }
-
-    private String getRoomDescription(Room room, Floor floor) {
-        if (room.isCleared()) return "Nothing left here.";
-
-        // Check if this is the exit room
+    private String getRoomStatus(Room room, Floor floor) {
         if (floor.isAtExit()) {
-            if (dungeon.isOnFinalFloor()) {
-                return floor.allCombatRoomsCleared() ? 
-                    "Victory awaits! Press SPACE!" : "Clear all rooms first!";
-            } else {
-                return dungeon.canDescend() ? 
-                    "Press SPACE to descend." : "Clear all combat rooms first!";
-            }
+            return dungeon.isOnFinalFloor() ? "Exit to Victory" : "Stairs Down";
         }
-
         return switch (room.getType()) {
-            case COMBAT -> "Enemies: " + room.getEnemies().size();
-            case BOSS -> "A powerful foe awaits!";
-            case TREASURE -> "Press SPACE to open.";
-            case SHOP -> "Browse the wares.";
-            case REST -> "Press SPACE to rest (heal 30%).";
-            case EVENT -> "Something strange...";
+            case COMBAT -> room.getEnemies().size() + " enemies";
+            case BOSS -> "Powerful foe ahead";
+            case TREASURE -> "Loot awaits";
+            case SHOP -> room.getItems().size() + " items";
+            case REST -> "Rest here";
+            default -> "";
         };
     }
 
     private Color getClassColor(PlayerClass pc) {
         return switch (pc) {
-            case WARRIOR -> new Color(0.3f, 0.5f, 0.9f, 1f);
+            case WARRIOR -> new Color(0.4f, 0.5f, 0.9f, 1f);
             case ROGUE -> new Color(0.4f, 0.7f, 0.4f, 1f);
-            case MAGE -> new Color(0.7f, 0.3f, 0.7f, 1f);
+            case MAGE -> new Color(0.7f, 0.4f, 0.8f, 1f);
         };
+    }
+
+    private Color getMessageColor(String msg, float alpha) {
+        if (msg.contains("slain") || msg.contains("damage") || msg.contains("struck")) {
+            return new Color(0.9f, 0.4f, 0.3f, alpha);
+        } else if (msg.contains("gold") || msg.contains("purchase")) {
+            return new Color(GOLD.r, GOLD.g, GOLD.b, alpha);
+        } else if (msg.contains("recover") || msg.contains("health")) {
+            return new Color(0.4f, 0.8f, 0.4f, alpha);
+        } else if (msg.contains("VICTORY")) {
+            return new Color(1f, 0.9f, 0.3f, alpha);
+        } else {
+            return new Color(PARCHMENT.r, PARCHMENT.g, PARCHMENT.b, alpha);
+        }
     }
 
     private void triggerShake(float duration, float intensity) {
@@ -748,20 +999,13 @@ public class IntegratedGameScreen implements Screen {
 
     private void addMessage(String msg) {
         messages.add(msg);
-        if (messages.size() > 6) messages.remove(0);
+        if (messages.size() > 5) messages.remove(0);
     }
 
-    @Override
-    public void resize(int width, int height) {}
-
-    @Override
-    public void pause() {}
-
-    @Override
-    public void resume() {}
-
-    @Override
-    public void hide() {}
+    @Override public void resize(int width, int height) {}
+    @Override public void pause() {}
+    @Override public void resume() {}
+    @Override public void hide() {}
 
     @Override
     public void dispose() {
@@ -770,137 +1014,41 @@ public class IntegratedGameScreen implements Screen {
         }
     }
 
-    // === INNER CLASSES ===
+    // === LISTENERS ===
 
-    /**
-     * Listener for game events to update UI messages.
-     */
     private class GameScreenListener implements GameSessionListener {
-        @Override
-        public void onRunStarted(GameSession session) {
-            addMessage("Run started!");
+        @Override public void onRunStarted(GameSession session) {}
+        @Override public void onFloorEntered(GameSession session, Floor floor) { 
+            addMessage("You enter dungeon level " + floor.getFloorNumber() + "..."); 
         }
-
-        @Override
-        public void onFloorEntered(GameSession session, Floor floor) {
-            addMessage("Entered floor " + floor.getFloorNumber());
+        @Override public void onRoomEntered(GameSession session, Room room) {}
+        @Override public void onRoomCleared(GameSession session, Room room) {}
+        @Override public void onCombatCompleted(GameSession session, CombatResult result) {}
+        @Override public void onItemPicked(GameSession session, Item item) { 
+            addMessage("You found: " + item.getName()); 
         }
-
-        @Override
-        public void onRoomEntered(GameSession session, Room room) {
-            if (room.getType() == RoomType.COMBAT && room.hasAliveEnemies()) {
-                addMessage("Enemies ahead!");
-            }
+        @Override public void onItemUsed(GameSession session, Item item) {}
+        @Override public void onShopPurchase(GameSession session, Item item, int cost) {}
+        @Override public void onPlayerRested(GameSession session, int healed) {}
+        @Override public void onPlayerLevelUp(GameSession session, int newLevel) { 
+            addMessage("You have reached level " + newLevel + "!"); 
         }
-
-        @Override
-        public void onRoomCleared(GameSession session, Room room) {
-            addMessage("Room cleared!");
-        }
-
-        @Override
-        public void onCombatCompleted(GameSession session, CombatResult result) {
-            if (result.isVictory()) {
-                addMessage("Combat won! +" + result.goldEarned() + " gold");
-            }
-        }
-
-        @Override
-        public void onItemPicked(GameSession session, Item item) {
-            addMessage("Found: " + item.getName());
-        }
-
-        @Override
-        public void onItemUsed(GameSession session, Item item) {
-            addMessage("Used: " + item.getName());
-        }
-
-        @Override
-        public void onShopPurchase(GameSession session, Item item, int cost) {
-            addMessage("Bought: " + item.getName());
-        }
-
-        @Override
-        public void onPlayerRested(GameSession session, int healed) {
-            addMessage("Rested, healed " + healed + " HP");
-        }
-
-        @Override
-        public void onPlayerLevelUp(GameSession session, int newLevel) {
-            addMessage("Level up! Now level " + newLevel);
-        }
-
-        @Override
-        public void onRunEnded(GameSession session, RunEndReason reason) {
-            addMessage("Run ended: " + reason);
-        }
+        @Override public void onRunEnded(GameSession session, RunEndReason reason) {}
     }
 
-    /**
-     * Combines multiple listeners.
-     */
     private static class CompositeSessionListener implements GameSessionListener {
         private final GameSessionListener[] listeners;
-
-        public CompositeSessionListener(GameSessionListener... listeners) {
-            this.listeners = listeners;
-        }
-
-        @Override
-        public void onRunStarted(GameSession s) {
-            for (var l : listeners) l.onRunStarted(s);
-        }
-
-        @Override
-        public void onFloorEntered(GameSession s, Floor f) {
-            for (var l : listeners) l.onFloorEntered(s, f);
-        }
-
-        @Override
-        public void onRoomEntered(GameSession s, Room r) {
-            for (var l : listeners) l.onRoomEntered(s, r);
-        }
-
-        @Override
-        public void onRoomCleared(GameSession s, Room r) {
-            for (var l : listeners) l.onRoomCleared(s, r);
-        }
-
-        @Override
-        public void onCombatCompleted(GameSession s, CombatResult r) {
-            for (var l : listeners) l.onCombatCompleted(s, r);
-        }
-
-        @Override
-        public void onItemPicked(GameSession s, Item i) {
-            for (var l : listeners) l.onItemPicked(s, i);
-        }
-
-        @Override
-        public void onItemUsed(GameSession s, Item i) {
-            for (var l : listeners) l.onItemUsed(s, i);
-        }
-
-        @Override
-        public void onShopPurchase(GameSession s, Item i, int c) {
-            for (var l : listeners) l.onShopPurchase(s, i, c);
-        }
-
-        @Override
-        public void onPlayerRested(GameSession s, int h) {
-            for (var l : listeners) l.onPlayerRested(s, h);
-        }
-
-        @Override
-        public void onPlayerLevelUp(GameSession s, int newLevel) {
-            for (var l : listeners) l.onPlayerLevelUp(s, newLevel);
-        }
-
-        @Override
-        public void onRunEnded(GameSession s, RunEndReason r) {
-            for (var l : listeners) l.onRunEnded(s, r);
-        }
+        public CompositeSessionListener(GameSessionListener... listeners) { this.listeners = listeners; }
+        @Override public void onRunStarted(GameSession s) { for (var l : listeners) l.onRunStarted(s); }
+        @Override public void onFloorEntered(GameSession s, Floor f) { for (var l : listeners) l.onFloorEntered(s, f); }
+        @Override public void onRoomEntered(GameSession s, Room r) { for (var l : listeners) l.onRoomEntered(s, r); }
+        @Override public void onRoomCleared(GameSession s, Room r) { for (var l : listeners) l.onRoomCleared(s, r); }
+        @Override public void onCombatCompleted(GameSession s, CombatResult r) { for (var l : listeners) l.onCombatCompleted(s, r); }
+        @Override public void onItemPicked(GameSession s, Item i) { for (var l : listeners) l.onItemPicked(s, i); }
+        @Override public void onItemUsed(GameSession s, Item i) { for (var l : listeners) l.onItemUsed(s, i); }
+        @Override public void onShopPurchase(GameSession s, Item i, int c) { for (var l : listeners) l.onShopPurchase(s, i, c); }
+        @Override public void onPlayerRested(GameSession s, int h) { for (var l : listeners) l.onPlayerRested(s, h); }
+        @Override public void onPlayerLevelUp(GameSession s, int n) { for (var l : listeners) l.onPlayerLevelUp(s, n); }
+        @Override public void onRunEnded(GameSession s, RunEndReason r) { for (var l : listeners) l.onRunEnded(s, r); }
     }
 }
-
-
