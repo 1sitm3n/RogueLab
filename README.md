@@ -1,104 +1,111 @@
-# RogueLab
+# RogueLab - LibGDX Edition
 
-A production-grade roguelike game engine with integrated telemetry, analytics, and visualization—designed to demonstrate professional software engineering across multiple languages.
+A data-driven roguelike game built with LibGDX for rich 2D graphics and effects.
 
-## What This Project Is
+## Quick Start
 
-RogueLab is a small roguelike-style game where each playthrough ("run") generates structured telemetry events. These events are logged and analyzed to understand player behavior, balance issues, and systemic weaknesses.
+### Prerequisites
+- Java 17+
+- Gradle 8+ (or use the included wrapper)
 
-The project is intentionally designed so it can be:
-- **Played** by a human
-- **Simulated** programmatically
-- **Analyzed** statistically
-- **Improved** using data
+### Running the Game
 
-This is not a tutorial, toy project, or coursework demo. It is a portfolio-quality demonstration of:
-- Clean object-oriented design
-- Event-driven architecture
-- Schema-based data contracts
-- Cross-language integration for legitimate engineering reasons
-- Observability and data-driven development
-
-## Repository Structure
-
-```
-/roguelab
-├── game-java/        # Core game engine (Java 21+)
-├── telemetry-server/ # REST API for telemetry data (Java)
-├── dashboard-ts/     # Data visualization UI (TypeScript/React)
-├── analytics-py/     # Offline analysis & reporting (Python)
-├── docs/             # Architecture, schemas, design decisions
-└── README.md
-```
-
-## Why Multiple Languages?
-
-Each language serves a distinct, justified purpose:
-
-| Module | Language | Rationale |
-|--------|----------|-----------|
-| `game-java` | Java | Strongly-typed OOP, clean domain modeling, deterministic simulation |
-| `telemetry-server` | Java | Shared domain knowledge with game, type-safe event handling |
-| `dashboard-ts` | TypeScript | Rich UI ecosystem, strong typing for API contracts |
-| `analytics-py` | Python | Data science libraries (pandas, matplotlib), rapid analysis iteration |
-
-## Data Flow
-
-```
-┌─────────────┐     .jsonl      ┌───────────────────┐
-│  game-java  │ ───────────────▶│ telemetry-server  │
-│  (engine)   │   telemetry     │     (REST API)    │
-└─────────────┘    events       └─────────┬─────────┘
-                                          │ HTTP/JSON
-                    ┌─────────────────────┼─────────────────────┐
-                    ▼                                           ▼
-          ┌─────────────────┐                        ┌──────────────────┐
-          │  dashboard-ts   │                        │   analytics-py   │
-          │ (visualization) │                        │ (batch analysis) │
-          └─────────────────┘                        └──────────────────┘
-```
-
-## Building Each Module
-
-### game-java
 ```bash
 cd game-java
-./gradlew build      # Compile and test
-./gradlew run        # Play the game
-./gradlew test       # Run unit tests
+gradle runGame
 ```
 
-### telemetry-server
+Or build and run the JAR:
 ```bash
-cd telemetry-server
-./gradlew build
-./gradlew run        # Start server on http://localhost:8080
+gradle jar
+java -jar build/libs/game-java-0.5.0.jar
 ```
 
-### dashboard-ts
-```bash
-cd dashboard-ts
-npm install
-npm run dev          # Start dev server on http://localhost:5173
-npm run build        # Production build
+## Controls
+
+### Menu
+- **UP/DOWN** or **W/S**: Select class
+- **ENTER/SPACE**: Start game
+- **ESC**: Quit
+
+### Dungeon Exploration
+- **A/D** or **LEFT/RIGHT**: Move between rooms
+- **SPACE/ENTER**: Interact with room (open chests, rest, shop, descend stairs)
+- **ESC**: Return to menu
+
+### Combat
+- **SPACE/ENTER**: Attack
+- Combat is turn-based: you attack, then the enemy attacks
+
+## Game Flow
+
+1. **Select a class**: Warrior (balanced), Rogue (high damage), or Mage (highest damage, lowest HP)
+2. **Explore the dungeon**: Move through rooms on each floor
+3. **Fight enemies**: Enter combat rooms to battle monsters
+4. **Collect loot**: Open treasure chests for gold
+5. **Rest**: Recover 30% HP at campfires
+6. **Shop**: Buy weapon upgrades for 50 gold
+7. **Defeat the boss**: Each floor ends with a boss battle
+8. **Descend**: After defeating the boss, use the stairs to go deeper
+9. **Win**: Clear all 3 floors to achieve victory!
+
+## Features
+
+- **Visual Effects**: Screen shake, floating damage numbers, combat animations
+- **Procedural Dungeons**: Each run generates different room layouts
+- **Class System**: Three distinct player classes with different stats
+- **Boss Battles**: Challenging encounters at the end of each floor
+- **Progression**: Collect gold, buy upgrades, get stronger
+
+## Project Structure
+
+```
+game-java/
+├── build.gradle                 # Gradle build configuration
+└── src/main/java/com/roguelab/
+    ├── gdx/
+    │   ├── DesktopLauncher.java    # Main entry point
+    │   ├── RogueLabGame.java       # Game class managing screens
+    │   ├── Assets.java             # Asset management
+    │   ├── screen/
+    │   │   ├── MenuScreen.java     # Main menu
+    │   │   ├── GameScreen.java     # Gameplay screen
+    │   │   └── GameOverScreen.java # Victory/defeat screen
+    │   ├── render/
+    │   │   ├── DungeonRenderer.java
+    │   │   ├── CombatRenderer.java
+    │   │   └── UIRenderer.java
+    │   └── effect/
+    │       ├── EffectsManager.java
+    │       └── DamageNumber.java
+    └── (existing domain classes)
 ```
 
-### analytics-py
-```bash
-cd analytics-py
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-pip install -r requirements.txt
-python -m roguelab_analytics.cli --help
-```
+## Integration with Existing Code
 
-## Documentation
+This LibGDX layer is designed to work with the existing RogueLab domain model:
 
-See the `/docs` directory for:
-- [Architecture Overview](docs/architecture.md)
-- [Event Schema](docs/event-schema.md)
-- [Design Decisions](docs/design-decisions.md)
+1. **GameScreen.GameState** is a simplified demo state
+2. Replace it with the real domain classes:
+   - `Player` from `com.roguelab.domain`
+   - `Enemy` from `com.roguelab.domain`
+   - `Dungeon` from `com.roguelab.dungeon`
+   - `CombatEngine` from `com.roguelab.combat`
+   - `GameSession` from `com.roguelab.game`
 
-## License
+3. The renderers read from game state - they don't modify it
+4. Telemetry continues to work through `GameSession`
 
-MIT License - See [LICENSE](LICENSE) for details.
+## Next Steps
+
+- [ ] Integrate with existing domain model
+- [ ] Add sprite sheets for real graphics
+- [ ] Implement full item system UI
+- [ ] Add sound effects and music
+- [ ] Add particle effects (blood, magic, etc.)
+- [ ] Screen transitions (fade between rooms)
+- [ ] Minimap
+
+## Version
+
+0.5.0 - LibGDX Edition (Standalone Demo)
