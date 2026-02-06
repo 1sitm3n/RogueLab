@@ -5,80 +5,79 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.roguelab.domain.PlayerClass;
+import com.roguelab.gdx.audio.SoundManager;
 import com.roguelab.gdx.screen.GameOverScreen;
 import com.roguelab.gdx.screen.IntegratedGameScreen;
 import com.roguelab.gdx.screen.MenuScreen;
 
 /**
- * Main game class for RogueLab.
- * Manages screens, shared resources, and game state transitions.
+ * Main game class managing screens, assets, and audio.
  */
 public class RogueLabGame extends Game {
 
-    // Shared rendering resources
     private SpriteBatch batch;
     private ShapeRenderer shapeRenderer;
     private Assets assets;
-
-    // Game configuration
-    public static final int VIRTUAL_WIDTH = 1280;
-    public static final int VIRTUAL_HEIGHT = 720;
-    public static final int TILE_SIZE = 32;
+    private SoundManager soundManager;
 
     @Override
     public void create() {
-        // Initialize shared resources
+        Gdx.app.log("RogueLabGame", "Initializing...");
+
         batch = new SpriteBatch();
         shapeRenderer = new ShapeRenderer();
+
+        // Load assets
         assets = new Assets();
         assets.load();
 
-        // Start at menu screen
-        setScreen(new MenuScreen(this));
+        // Initialize sound
+        soundManager = new SoundManager();
+        soundManager.load();
 
-        Gdx.app.log("RogueLab", "Game initialized - LibGDX version " + com.badlogic.gdx.Version.VERSION);
+        // Start at menu
+        setScreen(new MenuScreen(this));
+        
+        Gdx.app.log("RogueLabGame", "Initialization complete");
     }
 
-    /**
-     * Start a new game with the selected player class.
-     */
     public void startGame(PlayerClass playerClass) {
+        Gdx.app.log("RogueLabGame", "Starting game with class: " + playerClass);
         setScreen(new IntegratedGameScreen(this, playerClass));
     }
 
-    /**
-     * Start a new game with the selected player class (string version for compatibility).
-     */
-    public void startGame(String playerClassName) {
-        PlayerClass playerClass = PlayerClass.valueOf(playerClassName);
-        startGame(playerClass);
+    public void gameOver(boolean victory, int goldEarned, int floorsReached) {
+        Gdx.app.log("RogueLabGame", "Game over - Victory: " + victory);
+        setScreen(new GameOverScreen(this, victory, goldEarned, floorsReached));
     }
 
-    /**
-     * Return to the main menu.
-     */
     public void returnToMenu() {
         setScreen(new MenuScreen(this));
     }
 
-    /**
-     * Show game over screen.
-     */
-    public void gameOver(boolean victory, int score, int floorsCleared) {
-        setScreen(new GameOverScreen(this, victory, score, floorsCleared));
+    public SpriteBatch getBatch() {
+        return batch;
     }
 
-    // Getters for shared resources
-    public SpriteBatch getBatch() { return batch; }
-    public ShapeRenderer getShapeRenderer() { return shapeRenderer; }
-    public Assets getAssets() { return assets; }
+    public ShapeRenderer getShapeRenderer() {
+        return shapeRenderer;
+    }
+
+    public Assets getAssets() {
+        return assets;
+    }
+
+    public SoundManager getSoundManager() {
+        return soundManager;
+    }
 
     @Override
     public void dispose() {
-        super.dispose();
-        batch.dispose();
-        shapeRenderer.dispose();
-        assets.dispose();
-        Gdx.app.log("RogueLab", "Game disposed");
+        Gdx.app.log("RogueLabGame", "Disposing resources...");
+        
+        if (batch != null) batch.dispose();
+        if (shapeRenderer != null) shapeRenderer.dispose();
+        if (assets != null) assets.dispose();
+        if (soundManager != null) soundManager.dispose();
     }
 }

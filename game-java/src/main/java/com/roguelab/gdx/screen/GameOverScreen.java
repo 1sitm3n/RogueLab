@@ -9,163 +9,172 @@ import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.GlyphLayout;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
+import com.badlogic.gdx.math.MathUtils;
+import com.roguelab.gdx.Assets;
 import com.roguelab.gdx.RogueLabGame;
+import com.roguelab.gdx.audio.SoundManager;
+import com.roguelab.gdx.audio.SoundManager.SoundEffect;
 
 /**
- * Game over screen showing victory/defeat and final stats.
+ * Game over screen showing victory or defeat.
  */
 public class GameOverScreen implements Screen {
-    
+
     private final RogueLabGame game;
     private final SpriteBatch batch;
     private final ShapeRenderer shapeRenderer;
-    
+    private final SoundManager sound;
+    private final GlyphLayout layout;
+
     private final boolean victory;
-    private final int score;
-    private final int floorsCleared;
-    
+    private final int goldEarned;
+    private final int floorsReached;
+
     private float animTimer = 0;
-    private GlyphLayout layout;
-    
-    public GameOverScreen(RogueLabGame game, boolean victory, int score, int floorsCleared) {
+    private boolean soundPlayed = false;
+
+    // Colors
+    private static final Color STONE_DARK = Assets.STONE_DARK;
+    private static final Color STONE_MID = Assets.STONE_MID;
+    private static final Color GOLD = Assets.GOLD_MID;
+    private static final Color GOLD_LIGHT = Assets.GOLD_LIGHT;
+    private static final Color BLOOD = Assets.BLOOD_RED;
+    private static final Color PARCHMENT = Assets.PARCHMENT_MID;
+
+    public GameOverScreen(RogueLabGame game, boolean victory, int goldEarned, int floorsReached) {
         this.game = game;
         this.batch = game.getBatch();
         this.shapeRenderer = game.getShapeRenderer();
-        this.victory = victory;
-        this.score = score;
-        this.floorsCleared = floorsCleared;
+        this.sound = game.getSoundManager();
         this.layout = new GlyphLayout();
+        this.victory = victory;
+        this.goldEarned = goldEarned;
+        this.floorsReached = floorsReached;
     }
-    
+
     @Override
-    public void show() {
-        Gdx.app.log("GameOverScreen", "Game Over - Victory: " + victory + ", Score: " + score);
-    }
-    
+    public void show() {}
+
     @Override
     public void render(float delta) {
         animTimer += delta;
-        
-        // Background color based on outcome
-        if (victory) {
-            float pulse = (float)Math.sin(animTimer * 2) * 0.05f;
-            Gdx.gl.glClearColor(0.1f + pulse, 0.15f + pulse, 0.1f + pulse, 1f);
-        } else {
-            Gdx.gl.glClearColor(0.15f, 0.08f, 0.08f, 1f);
-        }
-        Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
-        
-        float centerX = Gdx.graphics.getWidth() / 2f;
-        float centerY = Gdx.graphics.getHeight() / 2f;
-        
-        // Draw decorative background
-        drawBackground();
-        
-        batch.begin();
-        
-        BitmapFont titleFont = game.getAssets().getTitleFont();
-        BitmapFont normalFont = game.getAssets().getNormalFont();
-        BitmapFont smallFont = game.getAssets().getSmallFont();
-        
-        // Main title
-        if (victory) {
-            titleFont.setColor(new Color(0.9f, 0.85f, 0.3f, 1f));
-            layout.setText(titleFont, "VICTORY!");
-        } else {
-            titleFont.setColor(new Color(0.8f, 0.2f, 0.2f, 1f));
-            layout.setText(titleFont, "DEFEAT");
-        }
-        
-        // Pulsing effect
-        float scale = 1f + (float)Math.sin(animTimer * 3) * 0.05f;
-        titleFont.getData().setScale(3f * scale);
-        titleFont.draw(batch, victory ? "VICTORY!" : "DEFEAT", centerX - layout.width * scale / 2, centerY + 150);
-        titleFont.getData().setScale(3f);
-        
-        // Stats
-        normalFont.setColor(Color.WHITE);
-        
-        String scoreText = "SCORE: " + score;
-        layout.setText(normalFont, scoreText);
-        normalFont.draw(batch, scoreText, centerX - layout.width / 2, centerY + 40);
-        
-        String floorsText = "FLOORS CLEARED: " + floorsCleared;
-        layout.setText(normalFont, floorsText);
-        normalFont.draw(batch, floorsText, centerX - layout.width / 2, centerY - 10);
-        
-        // Flavor text
-        smallFont.setColor(Color.LIGHT_GRAY);
-        String flavorText;
-        if (victory) {
-            flavorText = "You have conquered the dungeon!";
-        } else if (floorsCleared == 0) {
-            flavorText = "The dungeon claims another soul...";
-        } else {
-            flavorText = "You fell on floor " + (floorsCleared + 1) + ".";
-        }
-        layout.setText(smallFont, flavorText);
-        smallFont.draw(batch, flavorText, centerX - layout.width / 2, centerY - 60);
-        
-        // Instructions
-        smallFont.setColor(Color.GRAY);
-        String instructions = "Press ENTER to play again  |  ESC for menu";
-        layout.setText(smallFont, instructions);
-        smallFont.draw(batch, instructions, centerX - layout.width / 2, 80);
-        
-        // Telemetry note
-        smallFont.setColor(new Color(0.4f, 0.4f, 0.5f, 1f));
-        String telemetryNote = "Run data saved to telemetry log";
-        layout.setText(smallFont, telemetryNote);
-        smallFont.draw(batch, telemetryNote, centerX - layout.width / 2, 40);
-        
-        batch.end();
-        
-        // Handle input
-        handleInput();
-    }
-    
-    private void drawBackground() {
-        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
-        
-        // Animated particles/stars
-        for (int i = 0; i < 50; i++) {
-            float x = (i * 127 + animTimer * 20 * (i % 3 + 1)) % Gdx.graphics.getWidth();
-            float y = (i * 73 + animTimer * 10 * (i % 2 + 1)) % Gdx.graphics.getHeight();
-            float size = 2 + (i % 3);
-            float alpha = 0.3f + (float)Math.sin(animTimer * 2 + i) * 0.2f;
-            
+
+        // Play sound once after slight delay
+        if (!soundPlayed && animTimer > 0.3f) {
             if (victory) {
-                shapeRenderer.setColor(0.9f, 0.8f, 0.3f, alpha);
+                sound.play(SoundEffect.VICTORY);
             } else {
-                shapeRenderer.setColor(0.5f, 0.2f, 0.2f, alpha);
+                sound.play(SoundEffect.DEFEAT);
             }
-            shapeRenderer.circle(x, y, size);
+            soundPlayed = true;
         }
+
+        handleInput();
+
+        // Background
+        Color bgColor = victory ? new Color(0.08f, 0.1f, 0.06f, 1f) : new Color(0.1f, 0.05f, 0.05f, 1f);
+        Gdx.gl.glClearColor(bgColor.r, bgColor.g, bgColor.b, 1f);
+        Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
+
+        float screenWidth = Gdx.graphics.getWidth();
+        float screenHeight = Gdx.graphics.getHeight();
+        float centerX = screenWidth / 2f;
+        float centerY = screenHeight / 2f;
+
+        // Panel
+        float panelW = 500;
+        float panelH = 350;
+        float panelX = centerX - panelW / 2f;
+        float panelY = centerY - panelH / 2f;
+
+        drawPanel(panelX, panelY, panelW, panelH);
+
+        batch.begin();
+
+        BitmapFont titleFont = game.getAssets().getTitleFont();
+        BitmapFont font = game.getAssets().getNormalFont();
+        BitmapFont smallFont = game.getAssets().getSmallFont();
+
+        // Title with animation
+        float titlePulse = 0.8f + MathUtils.sin(animTimer * 3) * 0.2f;
+        if (victory) {
+            titleFont.setColor(GOLD_LIGHT.r * titlePulse, GOLD_LIGHT.g * titlePulse, GOLD_LIGHT.b * 0.5f, 1f);
+        } else {
+            titleFont.setColor(BLOOD.r * titlePulse, BLOOD.g * 0.3f, BLOOD.b * 0.3f, 1f);
+        }
+
+        titleFont.getData().setScale(3f);
+        String title = victory ? "VICTORY!" : "DEFEAT";
+        layout.setText(titleFont, title);
+        titleFont.draw(batch, title, centerX - layout.width / 2f, panelY + panelH - 50);
+
+        // Subtitle
+        font.setColor(PARCHMENT);
+        String subtitle = victory ? "You have conquered the dungeon!" : "You have fallen in battle...";
+        layout.setText(font, subtitle);
+        font.draw(batch, subtitle, centerX - layout.width / 2f, panelY + panelH - 110);
+
+        // Stats
+        float statsY = centerY + 20;
         
+        font.setColor(PARCHMENT);
+        font.draw(batch, "Floors Reached:", panelX + 60, statsY);
+        font.setColor(victory ? GOLD_LIGHT : Color.WHITE);
+        font.draw(batch, String.valueOf(floorsReached), panelX + panelW - 100, statsY);
+
+        statsY -= 40;
+        font.setColor(PARCHMENT);
+        font.draw(batch, "Gold Collected:", panelX + 60, statsY);
+        font.setColor(GOLD);
+        font.draw(batch, String.valueOf(goldEarned), panelX + panelW - 100, statsY);
+
+        // Prompt
+        float promptPulse = 0.5f + MathUtils.sin(animTimer * 4) * 0.5f;
+        smallFont.setColor(PARCHMENT.r, PARCHMENT.g, PARCHMENT.b, promptPulse);
+        String prompt = "Press SPACE or ENTER to continue";
+        layout.setText(smallFont, prompt);
+        smallFont.draw(batch, prompt, centerX - layout.width / 2f, panelY + 50);
+
+        batch.end();
+    }
+
+    private void drawPanel(float x, float y, float w, float h) {
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+
+        // Outer border
+        shapeRenderer.setColor(STONE_DARK.r * 0.3f, STONE_DARK.g * 0.3f, STONE_DARK.b * 0.3f, 1f);
+        shapeRenderer.rect(x - 8, y - 8, w + 16, h + 16);
+
+        // Frame
+        shapeRenderer.setColor(STONE_MID);
+        shapeRenderer.rect(x - 4, y - 4, w + 8, h + 8);
+
+        // Inner panel
+        shapeRenderer.setColor(STONE_DARK.r * 0.8f, STONE_DARK.g * 0.8f, STONE_DARK.b * 0.8f, 0.95f);
+        shapeRenderer.rect(x, y, w, h);
+
+        shapeRenderer.end();
+
+        // Decorative border
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Line);
+        Color borderColor = victory ? GOLD : BLOOD;
+        shapeRenderer.setColor(borderColor.r * 0.6f, borderColor.g * 0.6f, borderColor.b * 0.4f, 1f);
+        shapeRenderer.rect(x + 10, y + 10, w - 20, h - 20);
         shapeRenderer.end();
     }
-    
+
     private void handleInput() {
-        if (Gdx.input.isKeyJustPressed(Input.Keys.ENTER) || Gdx.input.isKeyJustPressed(Input.Keys.SPACE)) {
-            game.returnToMenu();
-        }
-        if (Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE)) {
+        if (Gdx.input.isKeyJustPressed(Input.Keys.SPACE) || 
+            Gdx.input.isKeyJustPressed(Input.Keys.ENTER) ||
+            Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE)) {
+            sound.play(SoundEffect.MENU_CONFIRM);
             game.returnToMenu();
         }
     }
-    
-    @Override
-    public void resize(int width, int height) {}
-    
-    @Override
-    public void pause() {}
-    
-    @Override
-    public void resume() {}
-    
-    @Override
-    public void hide() {}
-    
-    @Override
-    public void dispose() {}
+
+    @Override public void resize(int width, int height) {}
+    @Override public void pause() {}
+    @Override public void resume() {}
+    @Override public void hide() {}
+    @Override public void dispose() {}
 }
