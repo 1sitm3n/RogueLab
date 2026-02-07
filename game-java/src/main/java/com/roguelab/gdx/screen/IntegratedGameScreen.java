@@ -5,6 +5,7 @@ import com.badlogic.gdx.Input;
 import com.badlogic.gdx.Screen;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
+import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.GlyphLayout;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
@@ -12,6 +13,8 @@ import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Vector2;
+import com.badlogic.gdx.utils.viewport.FitViewport;
+import com.badlogic.gdx.utils.viewport.Viewport;
 import com.roguelab.combat.CombatResult;
 import com.roguelab.domain.*;
 import com.roguelab.dungeon.Dungeon;
@@ -32,15 +35,23 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Daggerfall-style game screen with sound effects.
+ * Daggerfall-style game screen with proper viewport scaling.
  */
 public class IntegratedGameScreen implements Screen {
+
+    // Virtual resolution - game renders at this size and scales to fit window
+    private static final float VIRTUAL_WIDTH = 1280;
+    private static final float VIRTUAL_HEIGHT = 720;
 
     private final RogueLabGame game;
     private final SpriteBatch batch;
     private final ShapeRenderer shapeRenderer;
     private final GlyphLayout layout;
     private final SoundManager sound;
+
+    // Viewport for proper scaling
+    private final OrthographicCamera camera;
+    private final Viewport viewport;
 
     // Game objects
     private final GameSession session;
@@ -80,11 +91,11 @@ public class IntegratedGameScreen implements Screen {
     private static final Color BLOOD = Assets.BLOOD_RED;
     private static final Color TORCH = Assets.TORCH_ORANGE;
 
-    // UI Layout
-    private static final int PORTRAIT_SIZE = 80;
-    private static final int BAR_WIDTH = 160;
-    private static final int BAR_HEIGHT = 20;
-    private static final int FRAME_BORDER = 8;
+    // UI Layout constants
+    private static final int FRAME_BORDER = 12;
+    private static final int SIDE_PANEL_WIDTH = 100;
+    private static final int TOP_BAR_HEIGHT = 50;
+    private static final int BOTTOM_BAR_HEIGHT = 130;
 
     public IntegratedGameScreen(RogueLabGame game, PlayerClass playerClass) {
         this.game = game;
@@ -93,6 +104,11 @@ public class IntegratedGameScreen implements Screen {
         this.layout = new GlyphLayout();
         this.effects = new EffectsManager(game);
         this.sound = game.getSoundManager();
+
+        // Setup viewport
+        this.camera = new OrthographicCamera();
+        this.viewport = new FitViewport(VIRTUAL_WIDTH, VIRTUAL_HEIGHT, camera);
+        this.viewport.apply(true);
 
         long seed = System.currentTimeMillis();
         this.session = new GameSession(
@@ -144,7 +160,15 @@ public class IntegratedGameScreen implements Screen {
         Gdx.gl.glClearColor(0.05f, 0.04f, 0.03f, 1f);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
 
-        batch.getProjectionMatrix().translate(shakeOffset.x, shakeOffset.y, 0);
+        // Apply viewport
+        viewport.apply();
+        
+        // Apply camera with shake
+        camera.position.set(VIRTUAL_WIDTH / 2f + shakeOffset.x, VIRTUAL_HEIGHT / 2f + shakeOffset.y, 0);
+        camera.update();
+        
+        batch.setProjectionMatrix(camera.combined);
+        shapeRenderer.setProjectionMatrix(camera.combined);
 
         GameState state = session.getState();
         switch (state) {
@@ -154,9 +178,10 @@ public class IntegratedGameScreen implements Screen {
             default -> renderExploration(delta);
         }
 
-        batch.getProjectionMatrix().translate(-shakeOffset.x, -shakeOffset.y, 0);
-
         renderDaggerfallUI(delta);
+        
+        // Reset batch projection for effects (screen space)
+        batch.setProjectionMatrix(camera.combined);
         effects.render(batch, delta);
     }
 
@@ -200,7 +225,6 @@ public class IntegratedGameScreen implements Screen {
             game.returnToMenu();
         }
         
-        // Toggle sound with M key
         if (Gdx.input.isKeyJustPressed(Input.Keys.M)) {
             sound.toggle();
             addMessage("Sound: " + (sound.isEnabled() ? "ON" : "OFF"));
@@ -237,12 +261,7 @@ public class IntegratedGameScreen implements Screen {
                 int healed = session.rest();
                 sound.play(SoundEffect.HEAL);
                 addMessage("You rest by the fire and recover " + healed + " health.");
-                effects.addDamageNumber(
-                    Gdx.graphics.getWidth() / 2f,
-                    Gdx.graphics.getHeight() / 2f,
-                    "+" + healed,
-                    Color.GREEN
-                );
+                effects.addDamageNumber(VIRTUAL_WIDTH / 2f, VIRTUAL_HEIGHT / 2f, "+" + healed, Color.GREEN);
                 session.leaveRest();
                 room.markCleared();
             } else if (floor.isAtExit()) {
@@ -289,15 +308,13 @@ public class IntegratedGameScreen implements Screen {
     private void handleCombatInput() {
         if (awaitingCombatInput) {
             if (Gdx.input.isKeyJustPressed(Input.Keys.SPACE) || Gdx.input.isKeyJustPressed(Input.Keys.ENTER)) {
-                // Play attack sound
                 sound.play(SoundEffect.ATTACK_SWORD);
                 
                 CombatResult result = session.executeCombat();
 
-                float enemyX = Gdx.graphics.getWidth() / 2f;
-                float enemyY = Gdx.graphics.getHeight() / 2f;
+                float enemyX = VIRTUAL_WIDTH / 2f;
+                float enemyY = VIRTUAL_HEIGHT / 2f;
 
-                // Hit sound after short delay (visual feedback)
                 sound.play(SoundEffect.HIT_IMPACT, 0.8f);
                 
                 effects.addDamageNumber(enemyX + 50, enemyY, "-" + result.totalDamageDealt(), Color.WHITE);
@@ -344,8 +361,7 @@ public class IntegratedGameScreen implements Screen {
             }
         }
 
-        if (Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE) || 
-            Gdx.input.isKeyJustPressed(Input.Keys.SPACE)) {
+        if (Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE) || Gdx.input.isKeyJustPressed(Input.Keys.SPACE)) {
             sound.play(SoundEffect.DOOR_OPEN);
             session.leaveShop();
             addMessage("You leave the merchant.");
@@ -359,7 +375,7 @@ public class IntegratedGameScreen implements Screen {
                 int healed = session.rest();
                 sound.play(SoundEffect.HEAL);
                 addMessage("You rest and recover " + healed + " health.");
-                effects.addDamageNumber(Gdx.graphics.getWidth() / 2f, Gdx.graphics.getHeight() / 2f, "+" + healed, Color.GREEN);
+                effects.addDamageNumber(VIRTUAL_WIDTH / 2f, VIRTUAL_HEIGHT / 2f, "+" + healed, Color.GREEN);
                 room.markCleared();
             }
             session.leaveRest();
@@ -369,16 +385,13 @@ public class IntegratedGameScreen implements Screen {
     // === RENDERING ===
 
     private void renderExploration(float delta) {
-        float screenWidth = Gdx.graphics.getWidth();
-        float screenHeight = Gdx.graphics.getHeight();
-        
-        float viewX = 100;
-        float viewY = 140;
-        float viewW = screenWidth - 200;
-        float viewH = screenHeight - 280;
+        float viewX = SIDE_PANEL_WIDTH + FRAME_BORDER;
+        float viewY = BOTTOM_BAR_HEIGHT;
+        float viewW = VIRTUAL_WIDTH - (SIDE_PANEL_WIDTH * 2) - (FRAME_BORDER * 2);
+        float viewH = VIRTUAL_HEIGHT - TOP_BAR_HEIGHT - BOTTOM_BAR_HEIGHT;
 
         renderDungeonCorridor(viewX, viewY, viewW, viewH, delta);
-        renderRoomMinimap(screenWidth / 2f, viewY + 30, delta);
+        renderRoomMinimap(VIRTUAL_WIDTH / 2f, viewY + 40, delta);
     }
 
     private void renderDungeonCorridor(float x, float y, float w, float h, float delta) {
@@ -395,8 +408,10 @@ public class IntegratedGameScreen implements Screen {
         shapeRenderer.setColor(STONE_MID.r * 0.8f, STONE_MID.g * 0.8f, STONE_MID.b * 0.8f, 1f);
         shapeRenderer.rect(x, y, w, h * 0.4f);
         
+        // Perspective walls
+        float perspDepth = 0.25f;
+        
         // Left wall
-        float perspDepth = 0.3f;
         shapeRenderer.setColor(STONE_MID.r * 0.6f, STONE_MID.g * 0.6f, STONE_MID.b * 0.6f, 1f);
         shapeRenderer.triangle(x, y, x, y + h, x + w * perspDepth, y + h * (1 - perspDepth));
         shapeRenderer.triangle(x, y, x + w * perspDepth, y + h * perspDepth, x + w * perspDepth, y + h * (1 - perspDepth));
@@ -421,28 +436,31 @@ public class IntegratedGameScreen implements Screen {
         float centerX = x + w / 2f;
         float centerY = y + h / 2f;
         
+        // Room icon
         TextureRegion roomTile = game.getAssets().getTile(getRoomTileKey(room.getType()));
-        float iconSize = Math.min(backW, backH) * 0.6f;
+        float iconSize = Math.min(backW, backH) * 0.5f;
         batch.draw(roomTile, centerX - iconSize / 2f, centerY - iconSize / 2f, iconSize, iconSize);
 
-        // Torchlight
+        // Torchlight effect
         float flicker = 0.9f + MathUtils.sin(animTimer * 8) * 0.1f;
-        batch.setColor(TORCH.r * flicker, TORCH.g * flicker, TORCH.b * 0.5f, 0.15f);
+        batch.setColor(TORCH.r * flicker, TORCH.g * flicker, TORCH.b * 0.5f, 0.12f);
         batch.draw(game.getAssets().getWhitePixel(), x, y, w, h);
         batch.setColor(Color.WHITE);
 
         BitmapFont font = game.getAssets().getNormalFont();
         BitmapFont smallFont = game.getAssets().getSmallFont();
         
+        // Room name
         font.setColor(PARCHMENT);
         String roomName = getRoomDisplayName(room.getType());
         layout.setText(font, roomName);
-        font.draw(batch, roomName, centerX - layout.width / 2f, y + h - 20);
+        font.draw(batch, roomName, centerX - layout.width / 2f, y + h - 30);
         
+        // Room status
         smallFont.setColor(room.isCleared() ? Color.GREEN : Color.LIGHT_GRAY);
         String status = room.isCleared() ? "[CLEARED]" : getRoomStatus(room, floor);
         layout.setText(smallFont, status);
-        smallFont.draw(batch, status, centerX - layout.width / 2f, y + 40);
+        smallFont.draw(batch, status, centerX - layout.width / 2f, y + 50);
 
         batch.end();
     }
@@ -452,17 +470,18 @@ public class IntegratedGameScreen implements Screen {
         List<Room> rooms = floor.getRooms();
         int currentIdx = floor.getCurrentRoomIndex();
         
-        int roomSize = 24;
-        int spacing = 32;
+        int roomSize = 28;
+        int spacing = 36;
         float mapWidth = rooms.size() * spacing;
         float startX = centerX - mapWidth / 2f + spacing / 2f;
         
+        // Connection lines
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
         shapeRenderer.setColor(STONE_MID);
         for (int i = 0; i < rooms.size() - 1; i++) {
             float x1 = startX + i * spacing;
             float x2 = startX + (i + 1) * spacing;
-            shapeRenderer.rectLine(x1, y, x2, y, 2);
+            shapeRenderer.rectLine(x1, y, x2, y, 3);
         }
         shapeRenderer.end();
         
@@ -477,6 +496,7 @@ public class IntegratedGameScreen implements Screen {
             
             TextureRegion tile = game.getAssets().getTile(visited ? getRoomTileKey(room.getType()) : "fog");
             
+            // Highlight current room
             if (current) {
                 batch.end();
                 float pulse = 0.4f + MathUtils.sin(animTimer * 4) * 0.2f;
@@ -490,8 +510,9 @@ public class IntegratedGameScreen implements Screen {
             batch.setColor(visited || current ? Color.WHITE : new Color(0.3f, 0.3f, 0.3f, 1f));
             batch.draw(tile, rx, ry, roomSize, roomSize);
             
+            // Cleared overlay
             if (room.isCleared()) {
-                batch.setColor(0.3f, 0.8f, 0.3f, 0.7f);
+                batch.setColor(0.3f, 0.8f, 0.3f, 0.5f);
                 batch.draw(game.getAssets().getWhitePixel(), rx, ry, roomSize, roomSize);
             }
             
@@ -503,18 +524,17 @@ public class IntegratedGameScreen implements Screen {
     private void renderCombat(float delta) {
         if (currentEnemy == null) return;
 
-        float screenWidth = Gdx.graphics.getWidth();
-        float screenHeight = Gdx.graphics.getHeight();
+        float viewX = SIDE_PANEL_WIDTH + FRAME_BORDER;
+        float viewY = BOTTOM_BAR_HEIGHT;
+        float viewW = VIRTUAL_WIDTH - (SIDE_PANEL_WIDTH * 2) - (FRAME_BORDER * 2);
+        float viewH = VIRTUAL_HEIGHT - TOP_BAR_HEIGHT - BOTTOM_BAR_HEIGHT;
         
-        float viewX = 100;
-        float viewY = 140;
-        float viewW = screenWidth - 200;
-        float viewH = screenHeight - 280;
-        
+        // Combat background
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
         shapeRenderer.setColor(0.08f, 0.05f, 0.03f, 1f);
         shapeRenderer.rect(viewX, viewY, viewW, viewH);
         
+        // Boss aura
         if (currentEnemy.getType().isBoss()) {
             for (int i = 0; i < 5; i++) {
                 float alpha = 0.1f - i * 0.02f;
@@ -529,10 +549,12 @@ public class IntegratedGameScreen implements Screen {
         float centerX = viewX + viewW / 2f;
         float centerY = viewY + viewH / 2f;
         
+        // Enemy sprite with bob animation
         float bob = MathUtils.sin(animTimer * 2) * 8;
         TextureRegion enemySprite = game.getAssets().getEnemySprite(currentEnemy.getType().name());
-        int spriteSize = currentEnemy.getType().isBoss() ? 200 : 160;
+        int spriteSize = currentEnemy.getType().isBoss() ? 180 : 140;
         
+        // Flash when low health
         float healthPct = (float) currentEnemy.getHealth().getCurrent() / currentEnemy.getHealth().getMaximum();
         if (healthPct < 0.3f) {
             float flash = MathUtils.sin(animTimer * 10) * 0.4f + 0.6f;
@@ -542,44 +564,57 @@ public class IntegratedGameScreen implements Screen {
         batch.draw(enemySprite, centerX - spriteSize / 2f, centerY - spriteSize / 2f + bob, spriteSize, spriteSize);
         batch.setColor(Color.WHITE);
         
+        // Enemy name
         BitmapFont font = game.getAssets().getNormalFont();
         font.setColor(currentEnemy.getType().isBoss() ? TORCH : PARCHMENT);
         String enemyName = currentEnemy.getName().toUpperCase();
         layout.setText(font, enemyName);
-        font.draw(batch, enemyName, centerX - layout.width / 2f, viewY + viewH - 20);
+        font.draw(batch, enemyName, centerX - layout.width / 2f, viewY + viewH - 25);
+        
+        // Special ability indicator
+        SpecialAbility ability = currentEnemy.getType().getSpecialAbility();
+        if (ability != SpecialAbility.NONE) {
+            BitmapFont smallFont = game.getAssets().getSmallFont();
+            Color abilityColor = ability.getIndicatorColor();
+            smallFont.setColor(abilityColor != null ? abilityColor : GOLD);
+            String abilityText = "[" + ability.getDisplayName() + "]";
+            layout.setText(smallFont, abilityText);
+            smallFont.draw(batch, abilityText, centerX - layout.width / 2f, viewY + viewH - 50);
+        }
         
         batch.end();
         
-        drawHealthBar(centerX - 100, viewY + viewH - 55, 200, 18, 
+        // Enemy health bar
+        drawHealthBar(centerX - 120, viewY + viewH - 80, 240, 20, 
             displayedEnemyHealth, currentEnemy.getHealth().getMaximum(),
             currentEnemy.getType().isBoss() ? TORCH : BLOOD);
         
         batch.begin();
         
+        // Turn counter
         BitmapFont smallFont = game.getAssets().getSmallFont();
         smallFont.setColor(STONE_LIGHT);
         String turnText = "Turn " + combatTurn;
         layout.setText(smallFont, turnText);
-        smallFont.draw(batch, turnText, centerX - layout.width / 2f, viewY + 30);
+        smallFont.draw(batch, turnText, centerX - layout.width / 2f, viewY + 40);
         
+        // Attack prompt
         float pulse = 0.6f + MathUtils.sin(animTimer * 5) * 0.4f;
         font.setColor(GOLD.r, GOLD.g, GOLD.b, pulse);
         String prompt = "[ PRESS SPACE TO ATTACK ]";
         layout.setText(font, prompt);
-        font.draw(batch, prompt, centerX - layout.width / 2f, viewY + 60);
+        font.draw(batch, prompt, centerX - layout.width / 2f, viewY + 70);
         
         batch.end();
     }
 
     private void renderShop(float delta) {
-        float screenWidth = Gdx.graphics.getWidth();
-        float screenHeight = Gdx.graphics.getHeight();
-        
-        float viewX = 100;
-        float viewY = 140;
-        float viewW = screenWidth - 200;
-        float viewH = screenHeight - 280;
+        float viewX = SIDE_PANEL_WIDTH + FRAME_BORDER;
+        float viewY = BOTTOM_BAR_HEIGHT;
+        float viewW = VIRTUAL_WIDTH - (SIDE_PANEL_WIDTH * 2) - (FRAME_BORDER * 2);
+        float viewH = VIRTUAL_HEIGHT - TOP_BAR_HEIGHT - BOTTOM_BAR_HEIGHT;
 
+        // Parchment background
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
         shapeRenderer.setColor(PARCHMENT.r * 0.7f, PARCHMENT.g * 0.7f, PARCHMENT.b * 0.7f, 1f);
         shapeRenderer.rect(viewX, viewY, viewW, viewH);
@@ -598,99 +633,105 @@ public class IntegratedGameScreen implements Screen {
 
         float centerX = viewX + viewW / 2f;
         
+        // Title
         titleFont.setColor(STONE_DARK);
         titleFont.getData().setScale(2f);
         layout.setText(titleFont, "MERCHANT");
-        titleFont.draw(batch, "MERCHANT", centerX - layout.width / 2f, viewY + viewH - 20);
+        titleFont.draw(batch, "MERCHANT", centerX - layout.width / 2f, viewY + viewH - 25);
         titleFont.getData().setScale(3f);
 
+        // Items
         Room room = session.getCurrentRoom();
         List<Item> items = room.getItems();
         
-        float itemY = viewY + viewH - 80;
+        float itemY = viewY + viewH - 90;
         for (int i = 0; i < items.size(); i++) {
             Item item = items.get(i);
             boolean canAfford = player.getInventory().getGold() >= item.getValue();
             
             font.setColor(canAfford ? STONE_DARK : STONE_LIGHT);
-            font.draw(batch, "[" + (i + 1) + "]", viewX + 30, itemY);
-            font.draw(batch, item.getName(), viewX + 80, itemY);
+            font.draw(batch, "[" + (i + 1) + "]", viewX + 40, itemY);
+            font.draw(batch, item.getName(), viewX + 90, itemY);
             
             smallFont.setColor(canAfford ? new Color(0.2f, 0.4f, 0.2f, 1f) : STONE_LIGHT);
             String stats = "";
             if (item.getAttackBonus() > 0) stats += "+" + item.getAttackBonus() + " ATK ";
             if (item.getDefenseBonus() > 0) stats += "+" + item.getDefenseBonus() + " DEF ";
             if (item.getHealthBonus() > 0) stats += "+" + item.getHealthBonus() + " HP";
-            smallFont.draw(batch, stats, viewX + 280, itemY);
+            smallFont.draw(batch, stats, viewX + 300, itemY);
             
             font.setColor(canAfford ? GOLD : BLOOD);
             layout.setText(font, item.getValue() + " gold");
-            font.draw(batch, item.getValue() + " gold", viewX + viewW - layout.width - 40, itemY);
+            font.draw(batch, item.getValue() + " gold", viewX + viewW - layout.width - 50, itemY);
             
-            itemY -= 40;
+            itemY -= 45;
         }
 
+        // Player gold
         font.setColor(GOLD);
         String goldText = "Your Gold: " + player.getInventory().getGold();
         layout.setText(font, goldText);
-        font.draw(batch, goldText, centerX - layout.width / 2f, viewY + 50);
+        font.draw(batch, goldText, centerX - layout.width / 2f, viewY + 55);
 
+        // Controls
         smallFont.setColor(STONE_MID);
         layout.setText(smallFont, "[1-9] Purchase   [SPACE] Leave");
-        smallFont.draw(batch, "[1-9] Purchase   [SPACE] Leave", centerX - layout.width / 2f, viewY + 25);
+        smallFont.draw(batch, "[1-9] Purchase   [SPACE] Leave", centerX - layout.width / 2f, viewY + 30);
 
         batch.end();
     }
 
     private void renderRest(float delta) {
-        float screenWidth = Gdx.graphics.getWidth();
-        float screenHeight = Gdx.graphics.getHeight();
-        
-        float viewX = 100;
-        float viewY = 140;
-        float viewW = screenWidth - 200;
-        float viewH = screenHeight - 280;
+        float viewX = SIDE_PANEL_WIDTH + FRAME_BORDER;
+        float viewY = BOTTOM_BAR_HEIGHT;
+        float viewW = VIRTUAL_WIDTH - (SIDE_PANEL_WIDTH * 2) - (FRAME_BORDER * 2);
+        float viewH = VIRTUAL_HEIGHT - TOP_BAR_HEIGHT - BOTTOM_BAR_HEIGHT;
 
+        // Dark background
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
         shapeRenderer.setColor(0.1f, 0.08f, 0.05f, 1f);
         shapeRenderer.rect(viewX, viewY, viewW, viewH);
         
+        // Fire glow
         float glowPulse = 0.8f + MathUtils.sin(animTimer * 3) * 0.2f;
+        float centerX = viewX + viewW / 2f;
+        float centerY = viewY + viewH / 2f;
         for (int i = 0; i < 8; i++) {
             float alpha = 0.15f * glowPulse - i * 0.015f;
             shapeRenderer.setColor(1f, 0.5f, 0.2f, alpha);
-            float r = 80 + i * 20;
-            shapeRenderer.circle(viewX + viewW / 2f, viewY + viewH / 2f - 30, r);
+            float r = 80 + i * 25;
+            shapeRenderer.circle(centerX, centerY - 20, r);
         }
         shapeRenderer.end();
 
         batch.begin();
 
-        float centerX = viewX + viewW / 2f;
-        float centerY = viewY + viewH / 2f;
-
+        // Campfire icon
         TextureRegion fireTile = game.getAssets().getTile("rest");
-        batch.draw(fireTile, centerX - 48, centerY - 60, 96, 96);
+        batch.draw(fireTile, centerX - 56, centerY - 56, 112, 112);
 
         BitmapFont font = game.getAssets().getNormalFont();
         BitmapFont smallFont = game.getAssets().getSmallFont();
 
+        // Title
         font.setColor(PARCHMENT);
         layout.setText(font, "REST SITE");
-        font.draw(batch, "REST SITE", centerX - layout.width / 2f, viewY + viewH - 30);
+        font.draw(batch, "REST SITE", centerX - layout.width / 2f, viewY + viewH - 35);
 
+        // Heal amount
         int maxHeal = (int)(player.getHealth().getMaximum() * 0.30);
         int actualHeal = Math.min(maxHeal, player.getHealth().getMaximum() - player.getHealth().getCurrent());
         
         smallFont.setColor(Color.GREEN);
         String healText = "Recover " + actualHeal + " health (30%)";
         layout.setText(smallFont, healText);
-        smallFont.draw(batch, healText, centerX - layout.width / 2f, centerY + 80);
+        smallFont.draw(batch, healText, centerX - layout.width / 2f, centerY + 90);
 
+        // Prompt
         float pulse = 0.6f + MathUtils.sin(animTimer * 4) * 0.4f;
         font.setColor(GOLD.r, GOLD.g, GOLD.b, pulse);
         layout.setText(font, "[ PRESS SPACE TO REST ]");
-        font.draw(batch, "[ PRESS SPACE TO REST ]", centerX - layout.width / 2f, viewY + 40);
+        font.draw(batch, "[ PRESS SPACE TO REST ]", centerX - layout.width / 2f, viewY + 50);
 
         batch.end();
     }
@@ -698,99 +739,117 @@ public class IntegratedGameScreen implements Screen {
     // === DAGGERFALL UI FRAME ===
 
     private void renderDaggerfallUI(float delta) {
-        float screenWidth = Gdx.graphics.getWidth();
-        float screenHeight = Gdx.graphics.getHeight();
-
-        drawStoneFrame(0, 0, screenWidth, screenHeight, 12);
-        drawStonePanel(12, screenHeight - 50, screenWidth - 24, 38);
-        drawStonePanel(12, 12, screenWidth - 24, 120);
-        drawStonePanel(12, 140, 80, screenHeight - 200);
-        drawStonePanel(screenWidth - 92, 140, 80, screenHeight - 200);
+        // Main stone frame
+        drawStoneFrame(0, 0, VIRTUAL_WIDTH, VIRTUAL_HEIGHT, FRAME_BORDER);
+        
+        // Top bar
+        drawStonePanel(FRAME_BORDER, VIRTUAL_HEIGHT - TOP_BAR_HEIGHT, VIRTUAL_WIDTH - FRAME_BORDER * 2, TOP_BAR_HEIGHT - FRAME_BORDER);
+        
+        // Bottom message panel
+        drawStonePanel(FRAME_BORDER, FRAME_BORDER, VIRTUAL_WIDTH - FRAME_BORDER * 2, BOTTOM_BAR_HEIGHT - FRAME_BORDER);
+        
+        // Left stats panel
+        drawStonePanel(FRAME_BORDER, BOTTOM_BAR_HEIGHT, SIDE_PANEL_WIDTH - FRAME_BORDER, VIRTUAL_HEIGHT - TOP_BAR_HEIGHT - BOTTOM_BAR_HEIGHT);
+        
+        // Right stats panel
+        drawStonePanel(VIRTUAL_WIDTH - SIDE_PANEL_WIDTH, BOTTOM_BAR_HEIGHT, SIDE_PANEL_WIDTH - FRAME_BORDER, VIRTUAL_HEIGHT - TOP_BAR_HEIGHT - BOTTOM_BAR_HEIGHT);
 
         batch.begin();
 
         BitmapFont font = game.getAssets().getNormalFont();
         BitmapFont smallFont = game.getAssets().getSmallFont();
 
-        // Top bar
+        // === TOP BAR ===
+        float topY = VIRTUAL_HEIGHT - 15;
+        
         font.setColor(PARCHMENT);
         String dungeonInfo = "FLOOR " + dungeon.getCurrentFloorNumber() + " OF " + dungeon.getMaxFloors();
         layout.setText(font, dungeonInfo);
-        font.draw(batch, dungeonInfo, screenWidth / 2f - layout.width / 2f, screenHeight - 22);
+        font.draw(batch, dungeonInfo, VIRTUAL_WIDTH / 2f - layout.width / 2f, topY);
         
         // Sound indicator
         smallFont.setColor(sound.isEnabled() ? GOLD : STONE_MID);
-        smallFont.draw(batch, sound.isEnabled() ? "[M] Sound ON" : "[M] Sound OFF", screenWidth - 120, screenHeight - 22);
+        String soundText = sound.isEnabled() ? "[M] Sound ON" : "[M] Sound OFF";
+        layout.setText(smallFont, soundText);
+        smallFont.draw(batch, soundText, VIRTUAL_WIDTH - layout.width - 25, topY - 5);
 
-        // Left panel
-        float leftX = 20;
-        float leftY = screenHeight - 80;
+        // === LEFT PANEL (Character) ===
+        float leftX = 22;
+        float leftY = VIRTUAL_HEIGHT - TOP_BAR_HEIGHT - 20;
 
+        // Portrait
         TextureRegion portrait = game.getAssets().getPortrait(player.getPlayerClass().name());
-        batch.draw(portrait, leftX, leftY - 60, 64, 64);
+        batch.draw(portrait, leftX, leftY - 60, 56, 56);
 
+        // Class abbreviation
         smallFont.setColor(getClassColor(player.getPlayerClass()));
-        layout.setText(smallFont, player.getPlayerClass().name().substring(0, 3));
-        smallFont.draw(batch, player.getPlayerClass().name().substring(0, 3), leftX + 32 - layout.width / 2f, leftY - 70);
+        String classAbbr = player.getPlayerClass().name().substring(0, 3);
+        layout.setText(smallFont, classAbbr);
+        smallFont.draw(batch, classAbbr, leftX + 28 - layout.width / 2f, leftY - 68);
 
+        // Level
         smallFont.setColor(GOLD);
-        smallFont.draw(batch, "Lv" + player.getLevel(), leftX + 10, leftY - 90);
+        smallFont.draw(batch, "Lv" + player.getLevel(), leftX + 8, leftY - 85);
 
         batch.end();
 
-        drawVerticalBar(leftX + 10, 150, 20, 150, 
+        // Vertical HP bar
+        drawVerticalBar(leftX + 8, BOTTOM_BAR_HEIGHT + 20, 24, 120, 
             displayedPlayerHealth, player.getHealth().getMaximum(), 
             new Color(0.2f, 0.6f, 0.2f, 1f), BLOOD);
 
         batch.begin();
 
         smallFont.setColor(PARCHMENT);
-        smallFont.draw(batch, "HP", leftX + 40, 310);
-        smallFont.draw(batch, (int)displayedPlayerHealth + "", leftX + 40, 290);
+        smallFont.draw(batch, "HP", leftX + 40, BOTTOM_BAR_HEIGHT + 145);
+        smallFont.draw(batch, (int)displayedPlayerHealth + "/" + player.getHealth().getMaximum(), leftX + 40, BOTTOM_BAR_HEIGHT + 125);
 
-        // Right panel
-        float rightX = screenWidth - 85;
-        float rightY = screenHeight - 80;
+        // === RIGHT PANEL (Stats) ===
+        float rightX = VIRTUAL_WIDTH - SIDE_PANEL_WIDTH + 15;
+        float rightY = VIRTUAL_HEIGHT - TOP_BAR_HEIGHT - 25;
 
         smallFont.setColor(PARCHMENT);
-        smallFont.draw(batch, "ATK", rightX + 5, rightY);
+        smallFont.draw(batch, "ATK", rightX, rightY);
         font.setColor(TORCH);
-        font.draw(batch, "" + player.getEffectiveAttack(), rightX + 5, rightY - 20);
+        font.draw(batch, "" + player.getEffectiveAttack(), rightX, rightY - 22);
 
         smallFont.setColor(PARCHMENT);
-        smallFont.draw(batch, "DEF", rightX + 5, rightY - 50);
+        smallFont.draw(batch, "DEF", rightX, rightY - 55);
         font.setColor(new Color(0.4f, 0.6f, 0.9f, 1f));
-        font.draw(batch, "" + player.getEffectiveDefense(), rightX + 5, rightY - 70);
+        font.draw(batch, "" + player.getEffectiveDefense(), rightX, rightY - 77);
 
         smallFont.setColor(PARCHMENT);
-        smallFont.draw(batch, "GOLD", rightX + 5, rightY - 100);
+        smallFont.draw(batch, "GOLD", rightX, rightY - 110);
         font.setColor(GOLD);
-        font.draw(batch, "" + player.getInventory().getGold(), rightX + 5, rightY - 120);
+        font.draw(batch, "" + player.getInventory().getGold(), rightX, rightY - 132);
 
-        int items = player.getInventory().getItems().size();
-        if (items > 0) {
+        int itemCount = player.getInventory().getItems().size();
+        if (itemCount > 0) {
             smallFont.setColor(PARCHMENT);
-            smallFont.draw(batch, "ITEMS", rightX + 5, rightY - 150);
+            smallFont.draw(batch, "ITEMS", rightX, rightY - 165);
             font.setColor(PARCHMENT);
-            font.draw(batch, "" + items, rightX + 5, rightY - 170);
+            font.draw(batch, "" + itemCount, rightX, rightY - 187);
         }
 
-        // Message log
-        float msgY = 115;
-        for (int i = messages.size() - 1; i >= 0 && msgY > 25; i--) {
+        // === BOTTOM MESSAGE LOG ===
+        float msgX = 30;
+        float msgY = BOTTOM_BAR_HEIGHT - 20;
+        
+        for (int i = messages.size() - 1; i >= 0 && msgY > 20; i--) {
             String msg = messages.get(i);
-            float alpha = 1f - (messages.size() - 1 - i) * 0.2f;
+            float alpha = 1f - (messages.size() - 1 - i) * 0.18f;
             alpha = Math.max(0.3f, alpha);
 
             smallFont.setColor(getMessageColor(msg, alpha));
-            smallFont.draw(batch, "> " + msg, 30, msgY);
-            msgY -= 18;
+            smallFont.draw(batch, "> " + msg, msgX, msgY);
+            msgY -= 20;
         }
 
+        // Controls hint
         smallFont.setColor(STONE_LIGHT);
         String controls = "[A/D] Move   [SPACE] Action   [M] Sound   [ESC] Quit";
         layout.setText(smallFont, controls);
-        smallFont.draw(batch, controls, screenWidth / 2f - layout.width / 2f, 18);
+        smallFont.draw(batch, controls, VIRTUAL_WIDTH / 2f - layout.width / 2f, 18);
 
         batch.end();
     }
@@ -798,17 +857,20 @@ public class IntegratedGameScreen implements Screen {
     private void drawStoneFrame(float x, float y, float w, float h, float thickness) {
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
         
+        // Outer dark border
         shapeRenderer.setColor(STONE_DARK);
         shapeRenderer.rect(x, y, w, thickness);
         shapeRenderer.rect(x, y + h - thickness, w, thickness);
         shapeRenderer.rect(x, y, thickness, h);
         shapeRenderer.rect(x + w - thickness, y, thickness, h);
         
+        // Inner highlight
         shapeRenderer.setColor(STONE_MID);
         float t2 = thickness * 0.6f;
         shapeRenderer.rect(x + t2, y + t2, w - t2 * 2, thickness - t2);
         shapeRenderer.rect(x + t2, y + h - thickness, w - t2 * 2, thickness - t2);
         
+        // Bevel effect
         shapeRenderer.setColor(STONE_LIGHT);
         shapeRenderer.rect(x + thickness * 0.3f, y + h - thickness * 0.5f, w - thickness * 0.6f, 2);
         shapeRenderer.rect(x + thickness * 0.3f, y + thickness * 0.3f, 2, h - thickness * 0.6f);
@@ -819,15 +881,18 @@ public class IntegratedGameScreen implements Screen {
     private void drawStonePanel(float x, float y, float w, float h) {
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
         
+        // Panel background
         shapeRenderer.setColor(STONE_DARK.r * 0.7f, STONE_DARK.g * 0.7f, STONE_DARK.b * 0.7f, 0.95f);
         shapeRenderer.rect(x, y, w, h);
         
+        // Border
         shapeRenderer.setColor(STONE_MID);
         shapeRenderer.rect(x, y, w, 3);
         shapeRenderer.rect(x, y + h - 3, w, 3);
         shapeRenderer.rect(x, y, 3, h);
         shapeRenderer.rect(x + w - 3, y, 3, h);
         
+        // Inner highlight
         shapeRenderer.setColor(STONE_LIGHT.r, STONE_LIGHT.g, STONE_LIGHT.b, 0.3f);
         shapeRenderer.rect(x + 3, y + h - 4, w - 6, 1);
         shapeRenderer.rect(x + 3, y + 3, 1, h - 6);
@@ -840,14 +905,17 @@ public class IntegratedGameScreen implements Screen {
         
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
         
+        // Background
         shapeRenderer.setColor(0.1f, 0.08f, 0.06f, 1f);
         shapeRenderer.rect(x, y, w, h);
         
+        // Fill
         shapeRenderer.setColor(color.r * 0.6f, color.g * 0.6f, color.b * 0.6f, 1f);
         shapeRenderer.rect(x + 2, y + 2, (w - 4) * pct, h - 4);
         shapeRenderer.setColor(color);
         shapeRenderer.rect(x + 2, y + h * 0.4f, (w - 4) * pct, h * 0.4f);
         
+        // Border
         shapeRenderer.setColor(STONE_MID);
         shapeRenderer.rect(x, y, w, 2);
         shapeRenderer.rect(x, y + h - 2, w, 2);
@@ -856,6 +924,7 @@ public class IntegratedGameScreen implements Screen {
         
         shapeRenderer.end();
 
+        // Text
         batch.begin();
         BitmapFont smallFont = game.getAssets().getSmallFont();
         smallFont.setColor(Color.WHITE);
@@ -870,13 +939,16 @@ public class IntegratedGameScreen implements Screen {
         
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
         
+        // Background
         shapeRenderer.setColor(emptyColor.r * 0.3f, emptyColor.g * 0.3f, emptyColor.b * 0.3f, 1f);
         shapeRenderer.rect(x, y, w, h);
         
+        // Fill with color based on health level
         Color fillColor = pct > 0.3f ? fullColor : (pct > 0.15f ? TORCH : emptyColor);
         shapeRenderer.setColor(fillColor);
         shapeRenderer.rect(x + 2, y + 2, w - 4, (h - 4) * pct);
         
+        // Border
         shapeRenderer.setColor(STONE_MID);
         shapeRenderer.rect(x, y, w, 2);
         shapeRenderer.rect(x, y + h - 2, w, 2);
@@ -966,7 +1038,11 @@ public class IntegratedGameScreen implements Screen {
         if (messages.size() > 5) messages.remove(0);
     }
 
-    @Override public void resize(int width, int height) {}
+    @Override
+    public void resize(int width, int height) {
+        viewport.update(width, height, true);
+    }
+
     @Override public void pause() {}
     @Override public void resume() {}
     @Override public void hide() {}

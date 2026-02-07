@@ -1,5 +1,6 @@
 package com.roguelab.domain;
 
+
 import com.roguelab.domain.component.*;
 
 import java.util.Objects;
@@ -141,3 +142,4 @@ public final class Player {
             inventory.getGold());
     }
 }
+

@@ -5,12 +5,15 @@ import com.badlogic.gdx.Input;
 import com.badlogic.gdx.Screen;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
+import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.GlyphLayout;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.math.MathUtils;
+import com.badlogic.gdx.utils.viewport.FitViewport;
+import com.badlogic.gdx.utils.viewport.Viewport;
 import com.roguelab.domain.PlayerClass;
 import com.roguelab.gdx.Assets;
 import com.roguelab.gdx.RogueLabGame;
@@ -18,14 +21,20 @@ import com.roguelab.gdx.audio.SoundManager;
 import com.roguelab.gdx.audio.SoundManager.SoundEffect;
 
 /**
- * Main menu with sound effects.
+ * Main menu with proper viewport scaling.
  */
 public class MenuScreen implements Screen {
+
+    private static final float VIRTUAL_WIDTH = 1280;
+    private static final float VIRTUAL_HEIGHT = 720;
 
     private final RogueLabGame game;
     private final SpriteBatch batch;
     private final ShapeRenderer shapeRenderer;
     private final SoundManager sound;
+
+    private final OrthographicCamera camera;
+    private final Viewport viewport;
 
     private int selectedIndex = 0;
     private final PlayerClass[] classes = PlayerClass.values();
@@ -49,6 +58,10 @@ public class MenuScreen implements Screen {
         this.shapeRenderer = game.getShapeRenderer();
         this.sound = game.getSoundManager();
         this.layout = new GlyphLayout();
+
+        this.camera = new OrthographicCamera();
+        this.viewport = new FitViewport(VIRTUAL_WIDTH, VIRTUAL_HEIGHT, camera);
+        this.viewport.apply(true);
     }
 
     @Override
@@ -62,15 +75,18 @@ public class MenuScreen implements Screen {
         Gdx.gl.glClearColor(0.05f, 0.04f, 0.03f, 1f);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
 
-        float screenWidth = Gdx.graphics.getWidth();
-        float screenHeight = Gdx.graphics.getHeight();
-        float centerX = screenWidth / 2f;
-        float centerY = screenHeight / 2f;
+        viewport.apply();
+        camera.update();
+        batch.setProjectionMatrix(camera.combined);
+        shapeRenderer.setProjectionMatrix(camera.combined);
 
-        drawStoneBackground(screenWidth, screenHeight);
+        float centerX = VIRTUAL_WIDTH / 2f;
+        float centerY = VIRTUAL_HEIGHT / 2f;
+
+        drawStoneBackground();
         
         float panelW = 600;
-        float panelH = 500;
+        float panelH = 480;
         float panelX = centerX - panelW / 2f;
         float panelY = centerY - panelH / 2f;
         
@@ -87,25 +103,25 @@ public class MenuScreen implements Screen {
         titleFont.setColor(GOLD_LIGHT.r * flicker, GOLD_LIGHT.g * flicker, GOLD_LIGHT.b * 0.5f, 1f);
         titleFont.getData().setScale(3.5f);
         layout.setText(titleFont, "ROGUELAB");
-        titleFont.draw(batch, "ROGUELAB", centerX - layout.width / 2f, panelY + panelH - 40);
+        titleFont.draw(batch, "ROGUELAB", centerX - layout.width / 2f, panelY + panelH - 35);
         titleFont.getData().setScale(3f);
 
         // Subtitle
         font.setColor(STONE_LIGHT);
         layout.setText(font, "A Dungeon of Data");
-        font.draw(batch, "A Dungeon of Data", centerX - layout.width / 2f, panelY + panelH - 100);
+        font.draw(batch, "A Dungeon of Data", centerX - layout.width / 2f, panelY + panelH - 90);
 
         batch.end();
-        drawGoldDivider(panelX + 50, panelY + panelH - 130, panelW - 100);
+        drawGoldDivider(panelX + 50, panelY + panelH - 115, panelW - 100);
         batch.begin();
 
         // Header
         font.setColor(PARCHMENT_LIGHT);
         layout.setText(font, "CHOOSE YOUR CLASS");
-        font.draw(batch, "CHOOSE YOUR CLASS", centerX - layout.width / 2f, panelY + panelH - 160);
+        font.draw(batch, "CHOOSE YOUR CLASS", centerX - layout.width / 2f, panelY + panelH - 145);
 
         // Class selection
-        float classY = panelY + panelH - 220;
+        float classY = panelY + panelH - 200;
         for (int i = 0; i < classes.length; i++) {
             PlayerClass pc = classes[i];
             boolean selected = (i == selectedIndex);
@@ -115,42 +131,42 @@ public class MenuScreen implements Screen {
                 float pulse = 0.4f + MathUtils.sin(animTimer * 4) * 0.2f;
                 shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
                 shapeRenderer.setColor(GOLD.r, GOLD.g, GOLD.b, pulse);
-                shapeRenderer.rect(panelX + 40, classY - 35, panelW - 80, 70);
+                shapeRenderer.rect(panelX + 40, classY - 32, panelW - 80, 65);
                 shapeRenderer.end();
                 
                 shapeRenderer.begin(ShapeRenderer.ShapeType.Line);
                 shapeRenderer.setColor(GOLD_LIGHT);
-                shapeRenderer.rect(panelX + 40, classY - 35, panelW - 80, 70);
+                shapeRenderer.rect(panelX + 40, classY - 32, panelW - 80, 65);
                 shapeRenderer.end();
                 batch.begin();
             }
 
             TextureRegion portrait = game.getAssets().getPortrait(pc.name());
             float portraitX = panelX + 60;
-            batch.draw(portrait, portraitX, classY - 30, 56, 56);
+            batch.draw(portrait, portraitX, classY - 28, 52, 52);
 
             font.setColor(selected ? GOLD_LIGHT : PARCHMENT);
-            font.draw(batch, pc.getDisplayName(), portraitX + 70, classY + 15);
+            font.draw(batch, pc.getDisplayName(), portraitX + 65, classY + 12);
 
             smallFont.setColor(selected ? PARCHMENT_LIGHT : STONE_LIGHT);
             String stats = String.format("HP: %d   ATK: %d   DEF: %d",
                 pc.getStartingHealth(), pc.getStartingAttack(), pc.getStartingDefense());
-            smallFont.draw(batch, stats, portraitX + 70, classY - 10);
+            smallFont.draw(batch, stats, portraitX + 65, classY - 8);
 
             if (selected) {
                 smallFont.setColor(STONE_LIGHT);
-                smallFont.draw(batch, pc.getDescription(), portraitX + 70, classY - 28);
+                smallFont.draw(batch, pc.getDescription(), portraitX + 65, classY - 26);
             }
 
-            classY -= 90;
+            classY -= 85;
         }
 
         batch.end();
-        drawGoldDivider(panelX + 50, panelY + 80, panelW - 100);
+        drawGoldDivider(panelX + 50, panelY + 75, panelW - 100);
         batch.begin();
 
         // Instructions
-        float instructY = panelY + 55;
+        float instructY = panelY + 52;
         smallFont.setColor(STONE_LIGHT);
         
         String nav = "[ W/S or UP/DOWN ] Select Class";
@@ -161,36 +177,36 @@ public class MenuScreen implements Screen {
         smallFont.setColor(GOLD.r * enterPulse + 0.3f, GOLD.g * enterPulse + 0.2f, GOLD.b * 0.3f, 1f);
         String enter = "[ ENTER or SPACE ] Begin Quest";
         layout.setText(smallFont, enter);
-        smallFont.draw(batch, enter, centerX - layout.width / 2f, instructY - 22);
+        smallFont.draw(batch, enter, centerX - layout.width / 2f, instructY - 20);
         
         smallFont.setColor(STONE_MID);
         String esc = "[ ESC ] Quit";
         layout.setText(smallFont, esc);
-        smallFont.draw(batch, esc, centerX - layout.width / 2f, instructY - 44);
+        smallFont.draw(batch, esc, centerX - layout.width / 2f, instructY - 40);
 
         // Version and sound status
         smallFont.setColor(new Color(0.3f, 0.25f, 0.2f, 1f));
-        smallFont.draw(batch, "v0.5.2 - Classic Dungeon UI", 20, 30);
+        smallFont.draw(batch, "v0.6.0 - Viewport Scaling", 20, 25);
         
         smallFont.setColor(sound.isEnabled() ? GOLD : STONE_MID);
         String soundStatus = "[M] Sound: " + (sound.isEnabled() ? "ON" : "OFF");
         layout.setText(smallFont, soundStatus);
-        smallFont.draw(batch, soundStatus, screenWidth - layout.width - 20, 30);
+        smallFont.draw(batch, soundStatus, VIRTUAL_WIDTH - layout.width - 20, 25);
 
         batch.end();
     }
 
-    private void drawStoneBackground(float w, float h) {
+    private void drawStoneBackground() {
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
         
         shapeRenderer.setColor(STONE_DARK.r * 0.5f, STONE_DARK.g * 0.5f, STONE_DARK.b * 0.5f, 1f);
-        shapeRenderer.rect(0, 0, w, h);
+        shapeRenderer.rect(0, 0, VIRTUAL_WIDTH, VIRTUAL_HEIGHT);
         
         int brickW = 64;
         int brickH = 32;
-        for (int y = 0; y < h; y += brickH) {
+        for (int y = 0; y < VIRTUAL_HEIGHT; y += brickH) {
             int offset = ((y / brickH) % 2 == 0) ? 0 : brickW / 2;
-            for (int x = -brickW; x < w + brickW; x += brickW) {
+            for (int x = -brickW; x < VIRTUAL_WIDTH + brickW; x += brickW) {
                 float variation = 0.4f + (float) Math.sin(x * 0.1 + y * 0.1) * 0.1f;
                 shapeRenderer.setColor(
                     STONE_DARK.r * variation,
@@ -201,10 +217,11 @@ public class MenuScreen implements Screen {
             }
         }
         
+        // Vignette
         for (int i = 0; i < 10; i++) {
             float alpha = 0.05f * (10 - i);
             shapeRenderer.setColor(0, 0, 0, alpha);
-            shapeRenderer.rect(i * 20, i * 20, w - i * 40, h - i * 40);
+            shapeRenderer.rect(i * 20, i * 20, VIRTUAL_WIDTH - i * 40, VIRTUAL_HEIGHT - i * 40);
         }
         
         shapeRenderer.end();
@@ -279,7 +296,6 @@ public class MenuScreen implements Screen {
             Gdx.app.exit();
         }
         
-        // Toggle sound
         if (Gdx.input.isKeyJustPressed(Input.Keys.M)) {
             sound.toggle();
             if (sound.isEnabled()) {
@@ -288,7 +304,11 @@ public class MenuScreen implements Screen {
         }
     }
 
-    @Override public void resize(int width, int height) {}
+    @Override 
+    public void resize(int width, int height) {
+        viewport.update(width, height, true);
+    }
+
     @Override public void pause() {}
     @Override public void resume() {}
     @Override public void hide() {}

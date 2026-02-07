@@ -1,6 +1,7 @@
 package com.roguelab.combat;
 
 import com.roguelab.domain.*;
+import java.util.Random;
 import com.roguelab.domain.component.StatusEffect;
 import com.roguelab.util.GameRandom;
 
@@ -198,4 +199,62 @@ public final class CombatEngine {
             player.incrementEnemiesKilled();
         }
     }
+
+    /**
+     * Process an enemy's special ability after their attack.
+     */
+    private void processEnemyAbility(Enemy enemy, Player player, CombatContext ctx) {
+        SpecialAbility ability = enemy.getType().getSpecialAbility();
+        if (ability == SpecialAbility.NONE) return;
+
+        Random rand = new Random();
+        if (!ability.shouldTrigger(rand)) return;
+
+        int floor = enemy.getFloor();
+        EntityId sourceId = enemy.getId();
+
+        switch (ability) {
+            case POISON -> {
+                player.getStatuses().apply(StatusType.POISONED, sourceId, ability.getDuration(), ability.getEffectValue(1, floor));
+            }
+            case BURN -> {
+                player.getStatuses().apply(StatusType.BURNING, sourceId, ability.getDuration(), ability.getEffectValue(1, floor));
+            }
+            case STUN -> {
+                player.getStatuses().apply(StatusType.STUNNED, sourceId, 1, 1);
+            }
+            case LIFE_DRAIN -> {
+                int drain = ability.getEffectValue(1, floor);
+                int actualDrain = Math.min(drain, player.getHealth().getCurrent());
+                player.getHealth().takeDamage(actualDrain);
+                enemy.getHealth().heal(actualDrain);
+                ctx.addDamageTaken(actualDrain);
+            }
+            case CORRODE -> {
+                player.getStatuses().apply(StatusType.VULNERABLE, sourceId, ability.getDuration(), 1);
+            }
+            case STEAL_GOLD -> {
+                int stolen = Math.min(ability.getEffectValue(1, floor), player.getInventory().getGold());
+                if (stolen > 0) {
+                    player.getInventory().spendGold(stolen);
+                }
+            }
+            case CURSE -> {
+                player.getStatuses().apply(StatusType.WEAKENED, sourceId, ability.getDuration(), 1);
+            }
+            case CHARGE -> {
+                int bonusDamage = enemy.getEffectiveAttack();
+                player.getHealth().takeDamage(bonusDamage);
+                ctx.addDamageTaken(bonusDamage);
+            }
+            case ENRAGE -> {
+                float healthPct = (float) enemy.getHealth().getCurrent() / enemy.getHealth().getMaximum();
+                if (healthPct < 0.5f && !enemy.getStatuses().has(StatusType.ENRAGED)) {
+                    enemy.getStatuses().apply(StatusType.ENRAGED, sourceId, 99, 1);
+                }
+            }
+            default -> {}
+        }
+    }
 }
+
