@@ -1,201 +1,357 @@
 # RogueLab
 
-A data-driven roguelike demonstrating professional-grade Java architecture, telemetry systems, and cross-language analytics.
+<div align="center">
+
+**A Data-Driven Roguelike Engine**
+
+*Demonstrating production-grade architecture, event-driven telemetry, and cross-language integration*
+
+[![Java](https://img.shields.io/badge/Java-21-orange?style=flat-square&logo=openjdk)](https://openjdk.org/)
+[![LibGDX](https://img.shields.io/badge/LibGDX-1.12-red?style=flat-square)](https://libgdx.com/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
+[![Python](https://img.shields.io/badge/Python-3.11-green?style=flat-square&logo=python)](https://python.org/)
+[![License](https://img.shields.io/badge/License-MIT-lightgrey?style=flat-square)](LICENSE)
+
+</div>
+
+---
 
 ## Overview
 
-RogueLab is a portfolio project showcasing:
-- **Clean OOP Design**: Domain-driven architecture with clear separation of concerns
-- **Event-Driven Telemetry**: Every game action emits structured JSON events
-- **Cross-Language Integration**: Java game engine, Python analytics pipeline
-- **Classic Dungeon Crawler UI**: 90s-inspired first-person perspective with stone-frame aesthetics
+RogueLab is a **multi-language portfolio project** that combines a fully playable roguelike game with professional-grade telemetry, analytics, and visualization systems. The project demonstrates:
 
-## Quick Start
+- **Clean Object-Oriented Design** — Domain-driven architecture with clear separation of concerns
+- **Event-Driven Telemetry** — Every game action emits structured, versioned events
+- **Cross-Language Integration** — Java game engine, TypeScript dashboard, Python analytics
+- **Production Patterns** — Testable code, schema contracts, and observability-first design
 
-### Prerequisites
-- Java 21+
-- Gradle 8+ (or use included wrapper)
-- Python 3.10+ (for analytics)
+This is not a tutorial or toy project. It is designed to showcase real-world engineering competence across the full software stack.
 
-### Running the Game
+---
 
-```bash
-cd game-java
-gradle runGame
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              ROGUELAB SYSTEM                                │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐         │
+│  │   GAME ENGINE   │───▶│   TELEMETRY     │───▶│   ANALYTICS     │         │
+│  │     (Java)      │    │    SERVER       │    │    (Python)     │         │
+│  └─────────────────┘    │     (Java)      │    └─────────────────┘         │
+│          │              └─────────────────┘            │                   │
+│          │                      │                      │                   │
+│          ▼                      ▼                      ▼                   │
+│  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐         │
+│  │   .jsonl files  │    │   REST API      │    │   Reports &     │         │
+│  │   (Run Data)    │    │   Endpoints     │    │   Visualizations│         │
+│  └─────────────────┘    └─────────────────┘    └─────────────────┘         │
+│                                 │                                          │
+│                                 ▼                                          │
+│                         ┌─────────────────┐                                │
+│                         │   DASHBOARD     │                                │
+│                         │  (TypeScript)   │                                │
+│                         └─────────────────┘                                │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-## Screenshots
+### Design Principles
 
-The game features a classic dungeon crawler aesthetic:
-- Stone-framed UI panels
-- First-person corridor view
-- Character portrait with vertical HP bar
-- Gothic color palette (dark stone, aged gold, blood red)
+| Principle | Implementation |
+|-----------|----------------|
+| **Composition over Inheritance** | Entity-component design for Player, Enemy, Combat |
+| **Immutable Events** | All telemetry events are versioned and serializable |
+| **Interface Segregation** | Behavior contracts via interfaces, not data inheritance |
+| **Dependency Injection** | GameSession receives configuration, listeners, random sources |
+| **Testability** | Deterministic combat with seeded randomness |
 
-## Controls
+---
 
-| Screen | Key | Action |
-|--------|-----|--------|
-| Menu | W/S, UP/DOWN | Select class |
-| Menu | ENTER, SPACE | Start game |
-| Dungeon | A/D, LEFT/RIGHT | Move between rooms |
-| Dungeon | SPACE | Interact (rest, shop, descend) |
-| Combat | SPACE | Attack |
-| Any | ESC | Menu / Quit |
+## Features
 
-## Game Features
+### 🎮 Game Engine
 
-### Classes
-| Class | HP | ATK | DEF | Special |
-|-------|----|----|-----|---------|
-| Warrior | 120 | 12 | 8 | Balanced stats |
-| Rogue | 80 | 15 | 4 | 15% crit chance, 2x crit damage |
-| Mage | 70 | 18 | 3 | Magic damage type |
+- **Three Character Classes** — Warrior (tank), Rogue (balanced), Mage (glass cannon)
+- **25 Enemy Types** — From rats and bats to dragons and demon lords
+- **11 Special Abilities** — Poison, burn, stun, life drain, phase, corrode, and more
+- **Procedural Dungeons** — Multi-floor exploration with varied room types
+- **Turn-Based Combat** — Strategic encounters with damage calculation and status effects
+- **Shop & Rest Systems** — Resource management and recovery options
 
-### Dungeon Structure
-- **3 Floors** with 6 rooms each
-- **Room Types**: Combat, Boss, Treasure, Shop, Rest
-- **Progression**: Clear all combat rooms → Defeat boss → Descend
+### 🖼️ Daggerfall-Style UI
 
-### Combat
-- Turn-based battles against procedurally scaled enemies
-- Damage calculation: `ATK - DEF` with variance
-- Visual feedback: Screen shake, floating damage numbers
+- **Procedural Graphics** — All sprites generated at runtime, no external assets
+- **Viewport Scaling** — FitViewport system maintains layout at any window size
+- **Animated Effects** — Damage numbers, screen shake, health bar interpolation
+- **Retro Aesthetic** — Stone panels, gold accents, flickering torchlight
+
+### 🔊 Procedural Audio
+
+- **18 Sound Effects** — Generated via waveform synthesis (square, sawtooth, noise)
+- **ADSR Envelopes** — Attack, decay, sustain, release shaping
+- **No External Files** — All audio created programmatically at startup
+
+### 📊 Telemetry System
+
+Every meaningful game action emits a structured event:
+
+```json
+{
+  "event_type": "DAMAGE_DEALT",
+  "event_version": "1.0",
+  "timestamp": "2025-02-10T14:32:15.123Z",
+  "run_id": "run_abc123",
+  "tick": 47,
+  "payload": {
+    "attacker_id": "player_1",
+    "defender_id": "skeleton_3",
+    "damage": 12,
+    "damage_type": "PHYSICAL",
+    "is_critical": false,
+    "defender_health_after": 8
+  }
+}
+```
+
+**Event Types:**
+- `RUN_STARTED`, `RUN_ENDED`
+- `FLOOR_ENTERED`, `ROOM_ENTERED`, `ROOM_CLEARED`
+- `COMBAT_STARTED`, `DAMAGE_DEALT`, `COMBAT_ENDED`
+- `ITEM_PICKED`, `SHOP_PURCHASED`
+- `PLAYER_RESTED`, `PLAYER_LEVEL_UP`, `PLAYER_DIED`
+
+### 📈 Analytics Pipeline
+
+Python scripts for offline analysis:
+
+- **Win Rate Analysis** — Track success rates by class and difficulty
+- **Enemy Lethality** — Identify which enemies cause the most deaths
+- **Item Effectiveness** — Compare pick rates vs win rates
+- **Balance Reports** — CSV summaries and matplotlib visualizations
+
+---
 
 ## Project Structure
 
 ```
 roguelab/
-├── game-java/                    # Java game engine
-│   └── src/main/java/com/roguelab/
-│       ├── domain/               # Core entities (Player, Enemy, Item)
-│       ├── combat/               # Combat engine and damage calculation
-│       ├── dungeon/              # Dungeon and floor generation
-│       ├── game/                 # GameSession orchestration
-│       ├── event/                # Telemetry event definitions
-│       ├── telemetry/            # JSON event emission
-│       └── gdx/                  # LibGDX presentation layer
-│           ├── screen/           # Menu, Game, GameOver screens
-│           ├── render/           # Dungeon, Combat, UI renderers
-│           └── effect/           # Visual effects (damage numbers, etc.)
-├── analytics-py/                 # Python analytics pipeline
-│   ├── analyze.py                # Main analysis script
-│   ├── reports/                  # Generated reports
+├── game-java/                    # Core game engine
+│   ├── src/main/java/com/roguelab/
+│   │   ├── domain/               # Player, Enemy, Item, EnemyType, etc.
+│   │   ├── combat/               # CombatEngine, DamageCalculator
+│   │   ├── dungeon/              # Floor, Room, DungeonGenerator
+│   │   ├── game/                 # GameSession, GameState
+│   │   ├── telemetry/            # Event emitters and writers
+│   │   └── gdx/                  # LibGDX rendering and screens
+│   │       ├── screen/           # MenuScreen, GameScreen, GameOverScreen
+│   │       ├── audio/            # ProceduralSoundGenerator, SoundManager
+│   │       └── effect/           # EffectsManager, damage numbers
+│   └── build.gradle
+│
+├── telemetry-server/             # REST API for run data
+│   ├── src/main/java/
+│   └── build.gradle
+│
+├── dashboard-ts/                 # Web visualization (TypeScript)
+│   ├── src/
+│   └── package.json
+│
+├── analytics-py/                 # Offline analysis scripts
+│   ├── analyze_runs.py
+│   ├── balance_report.py
 │   └── requirements.txt
-├── docs/                         # Documentation
-└── runs/                         # Telemetry output (*.jsonl)
+│
+├── docs/                         # Architecture documentation
+│   ├── ARCHITECTURE.md
+│   ├── EVENT_SCHEMA.md
+│   └── DESIGN_DECISIONS.md
+│
+└── README.md
 ```
 
-## Architecture
+---
 
-### Domain Model
-```
-Player ─── Health, Combat, Inventory, StatusEffects
-Enemy ─── EnemyType, Health, Combat
-Dungeon ─── Floor[] ─── Room[] ─── Enemy[], Item[]
-GameSession ─── orchestrates Player, Dungeon, CombatEngine
-```
+## Getting Started
 
-### Telemetry Events
-Every game action emits a structured event:
-```json
-{
-  "event_type": "DAMAGE_DEALT",
-  "event_version": "1",
-  "timestamp": "2025-02-02T14:30:00Z",
-  "run_id": "run_1738505400000",
-  "tick": 42,
-  "payload": {
-    "attacker": "player",
-    "defender": "SKELETON",
-    "damage": 12,
-    "critical": false
-  }
-}
-```
+### Prerequisites
 
-**Event Types**: `RUN_STARTED`, `ROOM_ENTERED`, `COMBAT_STARTED`, `DAMAGE_DEALT`, `ITEM_PICKED`, `SHOP_PURCHASED`, `PLAYER_HEALED`, `PLAYER_DIED`, `RUN_ENDED`
+- **Java 21+** (OpenJDK recommended)
+- **Gradle 8+** (wrapper included)
+- **Node.js 18+** (for dashboard)
+- **Python 3.11+** (for analytics)
 
-### Analytics Pipeline
+### Build & Run
 
 ```bash
-cd analytics-py
+# Clone the repository
+git clone https://github.com/yourusername/roguelab.git
+cd roguelab
+
+# Build and run the game
+cd game-java
+./gradlew runGame
+
+# Build and run the telemetry server
+cd ../telemetry-server
+./gradlew run
+
+# Install and run the dashboard
+cd ../dashboard-ts
+npm install
+npm run dev
+
+# Run analytics
+cd ../analytics-py
 pip install -r requirements.txt
-python analyze.py
+python analyze_runs.py ../runs/
 ```
 
-Generates reports on:
-- Win/loss rates by class
-- Item effectiveness
-- Enemy lethality rankings
-- Death cause analysis
-- Floor difficulty curves
+### Controls
 
-## Development Phases
+| Key | Action |
+|-----|--------|
+| `A` / `D` or `←` / `→` | Move between rooms |
+| `SPACE` / `ENTER` | Attack / Interact / Confirm |
+| `W` / `S` or `↑` / `↓` | Navigate menus |
+| `1-9` | Purchase items in shop |
+| `M` | Toggle sound |
+| `ESC` | Quit to menu |
 
-| Phase | Description | Status |
-|-------|-------------|--------|
-| 1-4 | Domain model, combat, items | ✅ Complete |
-| 5-6 | Dungeon generation | ✅ Complete |
-| 7 | Telemetry system | ✅ Complete |
-| 8 | Python analytics | ✅ Complete |
-| 9 | Java2D renderer | ✅ Complete |
-| 10 | Balance tuning (35% win rate) | ✅ Complete |
-| 11 | LibGDX visual upgrade | ✅ Complete |
-| 12 | Classic dungeon UI | ✅ Complete |
+---
 
 ## Technical Highlights
 
-- **Deterministic Gameplay**: Seeded random for reproducible runs
-- **Component Architecture**: Player stats via Health, Combat, Inventory components
-- **Listener Pattern**: Decoupled telemetry via GameSessionListener, CombatEventListener
-- **Procedural Assets**: All sprites and textures generated at runtime (no external files)
-- **Balance Iteration**: 10 tuning iterations using analytics data
+### Domain Model
 
-## Configuration
-
-Game balance is controlled in:
-- `PlayerClass.java` - Starting stats per class
-- `EnemyType.java` - Enemy stats and scaling
-- `DungeonConfig.java` - Floor count, room counts, difficulty curve
-
-## Building
-
-```bash
-# Build JAR
-cd game-java
-gradle jar
-
-# Run JAR
-java -jar build/libs/game-java-0.5.0.jar
-
-# Run tests
-gradle test
+```java
+public final class Player {
+    private final EntityId id;
+    private final PlayerClass playerClass;
+    private final Health health;
+    private final Combat combat;
+    private final Inventory inventory;
+    private final StatusEffects statuses;
+    private int level;
+    private int experience;
+    
+    public int getEffectiveAttack() {
+        int base = combat.getTotalAttack();
+        double modifier = statuses.getAttackModifier();
+        return (int) Math.round(base * modifier);
+    }
+}
 ```
 
-## Future Roadmap
+### Combat System
 
-- [ ] Sound effects and music
-- [ ] Real sprite assets (replace procedural)
-- [ ] Status effect visuals
-- [ ] Save/load system
-- [ ] TypeScript telemetry dashboard
-- [ ] More enemy types and boss mechanics
+```java
+public CombatResult runCombat(String runId, Player player, Room room, 
+                               GameRandom random, int startTick) {
+    CombatContext ctx = new CombatContext(runId, player, room, startTick);
+    
+    while (ctx.isCombatActive()) {
+        ctx.nextTurn();
+        processPlayerDoT(ctx);           // Poison, burn damage
+        if (player.isDead()) break;
+        
+        processPlayerAttack(ctx);         // Player attacks first enemy
+        processEnemyAttacks(ctx);         // All enemies counter-attack
+        processSpecialAbilities(ctx);     // Trigger enemy abilities
+        
+        player.getStatuses().tickAll();   // Reduce effect durations
+    }
+    
+    return ctx.buildResult();
+}
+```
 
-## Version History
+### Viewport Scaling
 
-- **0.5.1** - Classic Dungeon UI (stone frames, portraits, corridor view)
-- **0.5.0** - LibGDX integration with domain model
-- **0.4.3** - Balance tuning complete (35% win rate)
-- **0.4.0** - Python analytics pipeline
-- **0.3.0** - Telemetry system
-- **0.2.0** - Dungeon generation
-- **0.1.0** - Core domain model
+```java
+private static final float VIRTUAL_WIDTH = 1280;
+private static final float VIRTUAL_HEIGHT = 720;
+
+private final OrthographicCamera camera;
+private final Viewport viewport;
+
+public GameScreen() {
+    this.camera = new OrthographicCamera();
+    this.viewport = new FitViewport(VIRTUAL_WIDTH, VIRTUAL_HEIGHT, camera);
+}
+
+@Override
+public void resize(int width, int height) {
+    viewport.update(width, height, true);
+}
+```
+
+### Procedural Audio
+
+```java
+public Sound generateSound(Waveform wave, float frequency, float duration,
+                           float frequencySlide, float vibratoDepth) {
+    int sampleRate = 22050;
+    int samples = (int)(sampleRate * duration);
+    short[] pcm = new short[samples];
+    
+    for (int i = 0; i < samples; i++) {
+        float t = (float) i / sampleRate;
+        float freq = frequency + frequencySlide * t;
+        float vibrato = (float) Math.sin(t * vibratoHz * 2 * Math.PI) * vibratoDepth;
+        float sample = generateWaveform(wave, t, freq + vibrato);
+        sample *= getEnvelope(t, duration);  // ADSR shaping
+        pcm[i] = (short)(sample * 32767 * volume);
+    }
+    
+    return createWavSound(pcm, sampleRate);
+}
+```
+
+---
+
+## Enemy Types
+
+| Tier | Enemies | Special Abilities |
+|------|---------|-------------------|
+| **Floor 1** | Rat, Bat, Spider, Skeleton, Slime, Goblin | Poison, Corrode, Steal Gold |
+| **Floor 2** | Zombie, Orc, Ghost, Wraith, Cultist | Life Drain, Phase, Curse |
+| **Floor 3** | Troll, Elemental, Golem, Demon, Vampire, Minotaur | Burn, Stun, Charge |
+| **Bosses** | Goblin King, Necromancer, Skeleton Lord, Orc Chieftain, Lich, Dragon, Demon Lord | Summon, Enrage, and tier abilities |
+
+---
+
+## Why This Project?
+
+RogueLab was built to demonstrate:
+
+1. **System Design** — Not just features, but coherent architecture
+2. **Data Engineering** — Telemetry as a first-class citizen
+3. **Cross-Language Competence** — Java, TypeScript, Python working together
+4. **Production Mindset** — Testability, maintainability, observability
+5. **Attention to Polish** — Procedural graphics, audio, and smooth UX
+
+The codebase is intentionally readable and well-documented, suitable for review by engineering teams evaluating software craftsmanship.
+
+---
+
+## Roadmap
+
+- [ ] TypeScript dashboard with run visualization
+- [ ] Python balance analysis with matplotlib charts
+- [ ] Additional character classes
+- [ ] Item enchantment system
+- [ ] Persistent high scores
+- [ ] Run replay from telemetry
+
+---
 
 ## License
 
-Portfolio project - MIT License
+MIT License — See [LICENSE](LICENSE) for details.
 
-## Author
+---
 
-Built as a demonstration of production-grade game architecture and data-driven development.
+
+</div>
